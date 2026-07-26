@@ -7,8 +7,12 @@ export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
 
   const addToast = (message, type = 'info') => {
+    if (!message) return;
     const id = Date.now() + Math.random();
-    setToasts((prev) => [...prev, { id, message, type }]);
+    setToasts((prev) => {
+      if (prev.some((t) => t.message === message)) return prev;
+      return [...prev, { id, message, type }];
+    });
     setTimeout(() => {
       removeToast(id);
     }, 4000);

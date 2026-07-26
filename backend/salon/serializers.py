@@ -113,14 +113,34 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 class ParlourSerializer(serializers.ModelSerializer):
     average_rating = serializers.SerializerMethodField()
+    phone = serializers.CharField(source='owner.phone', read_only=True)
+    email = serializers.CharField(source='owner.email', read_only=True)
+    services = serializers.SerializerMethodField()
+    opening_time = serializers.SerializerMethodField()
+    closing_time = serializers.SerializerMethodField()
 
     class Meta:
         model = Parlour
-        fields = ['id', 'name', 'location', 'description', 'image', 'average_rating']
+        fields = ['id', 'name', 'location', 'description', 'image', 'average_rating', 'phone', 'email', 'services', 'opening_time', 'closing_time']
 
     def get_average_rating(self, obj):
         from django.db.models import Avg
         return obj.reviews.aggregate(value=Avg('rating'))['value'] or 0
+
+    def get_services(self, obj):
+        return list(obj.services.filter(active=True).values_list('name', flat=True))
+
+    def get_opening_time(self, obj):
+        first_slot = obj.slots.filter(active=True).order_by('start_time').first()
+        return first_slot.start_time.strftime('%H:%M') if first_slot and first_slot.start_time else '09:00'
+
+    def get_closing_time(self, obj):
+        last_slot = obj.slots.filter(active=True).order_by('-start_time').first()
+        if last_slot and last_slot.start_time:
+            h = (last_slot.start_time.hour + 1) % 24
+            return f"{h:02d}:{last_slot.start_time.minute:02d}"
+        return '20:00'
+
 
 class ServiceSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
@@ -161,11 +181,12 @@ class OfferSerializer(serializers.ModelSerializer):
 
 class ReviewSerializer(serializers.ModelSerializer):
     customer_name = serializers.CharField(source='customer.first_name', read_only=True)
+    parlour_name = serializers.CharField(source='parlour.name', read_only=True)
 
     class Meta:
         model = Review
         fields = '__all__'
-        read_only_fields = ['customer']
+        read_only_fields = ['customer', 'parlour']
 
 class NotificationSerializer(serializers.ModelSerializer):
     class Meta:

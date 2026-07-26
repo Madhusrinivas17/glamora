@@ -152,10 +152,33 @@ def reports(request):
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])
 def catalogue(request, parlour_id):
+    date_str = request.query_params.get('date', '').strip()
+    beautician_id = request.query_params.get('beautician', '').strip()
+
+    services = Service.objects.filter(parlour_id=parlour_id, active=True)
+    beauticians = Beautician.objects.filter(parlour_id=parlour_id, is_available=True, on_leave=False)
+    slots = TimeSlot.objects.filter(parlour_id=parlour_id, active=True).order_by('start_time')
+
+    booked_slot_ids = []
+    if date_str:
+        appointments = Appointment.objects.filter(parlour_id=parlour_id, date=date_str).exclude(status='CANCELLED')
+        if beautician_id and beautician_id.isdigit():
+            b_id = int(beautician_id)
+            booked_slot_ids = list(appointments.filter(beautician_id=b_id).values_list('slot_id', flat=True))
+        else:
+            total_beauticians_count = beauticians.count()
+            if total_beauticians_count > 0:
+                from django.db.models import Count
+                slot_counts = appointments.exclude(beautician=None).values('slot_id').annotate(cnt=Count('beautician_id', distinct=True))
+                booked_slot_ids = [item['slot_id'] for item in slot_counts if item['cnt'] >= total_beauticians_count]
+            else:
+                booked_slot_ids = [s.id for s in slots]
+
     return Response({
-        'services': ServiceSerializer(Service.objects.filter(parlour_id=parlour_id, active=True), many=True).data,
-        'beauticians': BeauticianSerializer(Beautician.objects.filter(parlour_id=parlour_id, is_available=True, on_leave=False), many=True).data,
-        'slots': SlotSerializer(TimeSlot.objects.filter(parlour_id=parlour_id, active=True).order_by('start_time'), many=True).data
+        'services': ServiceSerializer(services, many=True).data,
+        'beauticians': BeauticianSerializer(beauticians, many=True).data,
+        'slots': SlotSerializer(slots, many=True).data,
+        'booked_slot_ids': list(set(booked_slot_ids))
     })
 
 class AppointmentViewSet(viewsets.ModelViewSet):
@@ -173,20 +196,25 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         service = serializer.validated_data['service']
         parlour = service.parlour
         slot = serializer.validated_data['slot']
-        if slot.parlour_id != parlour.id or not slot.active:
-            raise serializers.ValidationError('Selected time slot is invalid.')
-        if Holiday.objects.filter(parlour=parlour, date=serializer.validated_data['date']).exists():
-            raise serializers.ValidationError('Salon is closed on this date.')
+        booking_date = serializer.validated_data['date']
         beautician = serializer.validated_data.get('beautician')
+
+        if slot.parlour_id != parlour.id or not slot.active:
+            raise serializers.ValidationError({'detail': 'Selected time slot is invalid.'})
+        if Holiday.objects.filter(parlour=parlour, date=booking_date).exists():
+            raise serializers.ValidationError({'detail': 'Salon is closed on this date.'})
         if beautician and beautician.parlour_id != parlour.id:
-            raise serializers.ValidationError('Beautician does not belong to this salon.')
+            raise serializers.ValidationError({'detail': 'Beautician does not belong to this salon.'})
+
         if not beautician:
-            busy = Appointment.objects.filter(parlour=parlour, date=serializer.validated_data['date'], slot=serializer.validated_data['slot']).exclude(beautician=None).values_list('beautician_id', flat=True)
+            busy = Appointment.objects.filter(parlour=parlour, date=booking_date, slot=slot).exclude(status='CANCELLED').exclude(beautician=None).values_list('beautician_id', flat=True)
             beautician = Beautician.objects.filter(parlour=parlour, is_available=True, on_leave=False).exclude(id__in=busy).first()
             if not beautician:
-                raise serializers.ValidationError('No beautician is available for this time slot.')
-        if Appointment.objects.filter(parlour=parlour, date=serializer.validated_data['date'], slot=serializer.validated_data['slot'], beautician=beautician).exists():
-            raise serializers.ValidationError('This time slot is no longer available.')
+                raise serializers.ValidationError({'detail': 'This slot has just been booked by another user. Please select another available time.'})
+
+        if Appointment.objects.filter(parlour=parlour, date=booking_date, slot=slot, beautician=beautician).exclude(status='CANCELLED').exists():
+            raise serializers.ValidationError({'detail': 'This slot has just been booked by another user. Please select another available time.'})
+
         serializer.save(customer=self.request.user, parlour=parlour, beautician=beautician)
 
     @action(detail=True, methods=['post'], permission_classes=[IsOwner])
@@ -242,7 +270,8 @@ def reviews(request, parlour_id=None):
         return Response({'detail': 'Parlour ID is required for submitting a review.'}, status=status.HTTP_400_BAD_REQUEST)
     if not Appointment.objects.filter(customer=request.user, parlour_id=parlour_id, status='COMPLETED').exists():
         return Response({'detail': 'Reviews can be added after a completed appointment.'}, status=status.HTTP_403_FORBIDDEN)
-    s = ReviewSerializer(data=request.data)
+    review_obj = Review.objects.filter(customer=request.user, parlour_id=parlour_id).first()
+    s = ReviewSerializer(review_obj, data=request.data, partial=True) if review_obj else ReviewSerializer(data=request.data)
     s.is_valid(raise_exception=True)
     s.save(customer=request.user, parlour_id=parlour_id)
-    return Response(s.data, status=201)
+    return Response(s.data, status=status.HTTP_200_OK if review_obj else status.HTTP_201_CREATED)

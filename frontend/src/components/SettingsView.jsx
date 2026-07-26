@@ -15,21 +15,14 @@ import {
   Sparkles
 } from 'lucide-react';
 import { useToast } from './ToastContext';
-import axios from 'axios';
-
-const api = axios.create({ baseURL: import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api' });
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+import api from '../api';
 
 const avatarOptions = [
-  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
-  'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=300&q=80',
-  'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=300&q=80',
-  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
-  'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=300&q=80'
+  'https://img.freepik.com/premium-vector/cute-girl-avatar-cartoon-illustration-vector_1338461-937.jpg?w=2000',
+  'https://tse2.mm.bing.net/th/id/OIP.dSfDR9CqAoNnog0RVrOlcgHaHa?r=0&rs=1&pid=ImgDetMain&o=7&rm=3',
+  'https://tse1.explicit.bing.net/th/id/OIP.48t1C6eJ_jhtrPJOXucP_QHaHa?r=0&rs=1&pid=ImgDetMain&o=7&rm=3',
+  'https://static.vecteezy.com/system/resources/previews/040/524/389/non_2x/avatar-of-a-girl-on-a-white-background-cute-little-girl-in-flat-style-portrait-vector.jpg',
+  'https://static.vecteezy.com/system/resources/previews/028/597/534/original/young-cartoon-female-avatar-student-character-wearing-eyeglasses-file-no-background-ai-generated-png.png'
 ];
 
 export default function SettingsView({ role = 'USER' }) {
@@ -53,7 +46,7 @@ export default function SettingsView({ role = 'USER' }) {
   });
 
   const [parlour, setParlour] = useState({
-    name: 'Glamora Luxury Spa',
+    name: 'Glamora & salon',
     address: '108 Serenity Lane, Beverly Hills, CA',
     phone: '+1 (555) 234-5678',
     email: 'contact@glamorasalon.com',

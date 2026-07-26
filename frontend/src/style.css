@@ -255,12 +255,211 @@ header.public-header {
   -webkit-backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--surface-border);
   height: 80px;
+  width: 100%;
+  padding: 0;
+  transition: background var(--transition-normal);
+}
+
+.public-header-container {
+  max-width: 1280px;
+  width: 100%;
+  height: 100%;
+  margin: 0 auto;
+  padding: 0 40px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 40px;
-  transition: background var(--transition-normal);
 }
+
+/* ==========================================
+   PUBLIC LANDING PAGE (HOME) LAYOUT & ALIGNMENT
+   ========================================== */
+
+.home-page-container {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 40px 80px;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 48px;
+  align-items: center;
+  padding: 60px 0;
+  min-height: 520px;
+}
+
+.hero .eyebrow {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--rose-pink);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  font-size: 54px;
+  line-height: 1.15;
+  margin-bottom: 20px;
+  color: var(--text-main);
+  letter-spacing: -0.02em;
+}
+
+.hero h1 i {
+  font-style: italic;
+  font-weight: 400;
+  color: var(--dusty-pink);
+}
+
+.hero .lead {
+  font-size: 18px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin-bottom: 32px;
+  max-width: 520px;
+}
+
+.hero .actions {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.hero .textlink {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text-main);
+  border-bottom: 2px solid var(--rose-pink);
+  padding-bottom: 2px;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.hero .textlink:hover {
+  color: var(--rose-pink);
+}
+
+.heroimage {
+  position: relative;
+  width: 100%;
+  height: 440px;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--surface-border);
+}
+
+.heroimage img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.heroimage .rating {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  background: var(--card-bg);
+  color: var(--text-main);
+  padding: 10px 18px;
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--surface-border);
+}
+
+.heroimage .rating b {
+  color: var(--accent-gold);
+}
+
+.heroimage .rating span {
+  color: var(--text-muted);
+}
+
+.intro {
+  text-align: center;
+  max-width: 720px;
+  margin: 70px auto 50px;
+  padding: 0 20px;
+}
+
+.intro .eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--rose-pink);
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.intro h2 {
+  font-size: 40px;
+  line-height: 1.25;
+  margin-bottom: 16px;
+}
+
+.intro h2 i {
+  font-style: italic;
+  font-weight: 400;
+}
+
+.intro p {
+  font-size: 16px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px;
+  padding: 20px 0 40px;
+}
+
+.features > div {
+  background: var(--card-bg);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-lg);
+  padding: 32px 28px;
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--transition-bounce), box-shadow var(--transition-normal), border-color var(--transition-fast);
+}
+
+.features > div:hover {
+  transform: translateY(-6px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--rose-pink);
+}
+
+.features > div svg {
+  width: 32px;
+  height: 32px;
+  color: var(--rose-pink);
+  margin-bottom: 16px;
+}
+
+.features h3 {
+  font-size: 22px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.features p {
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
 
 .logo {
   font-family: 'Playfair Display', serif;

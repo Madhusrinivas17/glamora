@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
-import axios from 'axios';
+import api, { clearSession } from './api';
 import {
   ArrowRight,
   Calendar,
@@ -56,30 +56,7 @@ import {
   MyAppointmentsView,
   FavouriteServicesView
 } from './pages/UserViews';
-
-const api = axios.create({ baseURL: import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api' });
-const clearSession = () => {
-  localStorage.removeItem('token');
-  localStorage.removeItem('refresh');
-  localStorage.removeItem('user');
-};
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
-
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      clearSession();
-      if (!window.location.pathname.startsWith('/login')) window.location.assign('/login');
-    }
-    return Promise.reject(error);
-  }
-);
+import LiveServicesView from './pages/LiveServicesView';
 
 const images = [
   'https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=1200&q=80',
@@ -93,8 +70,16 @@ const getUser = () => {
 const tokenIsUsable = () => {
   try {
     const token = localStorage.getItem('token');
-    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-    return Boolean(payload.exp && payload.exp * 1000 > Date.now());
+    const refresh = localStorage.getItem('refresh');
+    if (!token) return false;
+    const parsePayload = (t) => JSON.parse(atob(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    const accessPayload = parsePayload(token);
+    if (accessPayload.exp && accessPayload.exp * 1000 > Date.now()) return true;
+    if (refresh) {
+      const refreshPayload = parsePayload(refresh);
+      if (refreshPayload.exp && refreshPayload.exp * 1000 > Date.now()) return true;
+    }
+    return false;
   } catch { return false; }
 };
 
@@ -138,43 +123,45 @@ function PublicNav() {
 
   return (
     <header className="public-header">
-      <Link className="logo" to="/">
-        glamora<span>*</span>
-      </Link>
+      <div className="public-header-container">
+        <Link className="logo" to="/">
+          glamora<span>*</span>
+        </Link>
 
-      <button className="mobile-drawer-toggle" onClick={() => setOpen(!open)}>
-        {open ? <X /> : <Menu />}
-      </button>
-
-      <nav className="public-nav">
-        <Link to="/services">Services</Link>
-        <Link to="/offers">Offers</Link>
-        <Link to="/about">About</Link>
-        
-        <button className="theme-toggle-btn" onClick={() => setDark(!dark)} title="Toggle theme">
-          {dark ? <Sun size={18} color="#D4AF37" /> : <Moon size={18} color="#5B3A55" />}
+        <button className="mobile-drawer-toggle" onClick={() => setOpen(!open)}>
+          {open ? <X /> : <Menu />}
         </button>
 
-        {isAuthenticated() ? (
-          <>
-            <Link to={user.role === 'ADMIN' ? '/admin-dashboard' : '/user-dashboard'} className="btn btn-secondary btn-small">
-              Dashboard
-            </Link>
-            <button className="btn btn-small" onClick={logout}>
-              Sign out
-            </button>
-          </>
-        ) : (
-          <>
-            <Link to="/login" className="btn btn-secondary btn-small">
-              Sign in
-            </Link>
-            <Link className="btn btn-small" to="/register">
-              Join Glamora <Sparkles size={14} />
-            </Link>
-          </>
-        )}
-      </nav>
+        <nav className={`public-nav ${open ? 'mobile-open' : ''}`}>
+          <Link to="/services">Services</Link>
+          <Link to="/offers">Offers</Link>
+          <Link to="/about">About</Link>
+          
+          <button className="theme-toggle-btn" onClick={() => setDark(!dark)} title="Toggle theme">
+            {dark ? <Sun size={18} color="#D4AF37" /> : <Moon size={18} color="#5B3A55" />}
+          </button>
+
+          {isAuthenticated() ? (
+            <>
+              <Link to={user.role === 'ADMIN' ? '/admin-dashboard' : '/user-dashboard'} className="btn btn-secondary btn-small">
+                Dashboard
+              </Link>
+              <button className="btn btn-small" onClick={logout}>
+                Sign out
+              </button>
+            </>
+          ) : (
+            <>
+              <Link to="/login" className="btn btn-secondary btn-small">
+                Sign in
+              </Link>
+              <Link className="btn btn-small" to="/register">
+                Join Glamora <Sparkles size={14} />
+              </Link>
+            </>
+          )}
+        </nav>
+      </div>
     </header>
   );
 }
@@ -182,7 +169,7 @@ function PublicNav() {
 // Public Home Landing Page
 function Home() {
   return (
-    <>
+    <div className="home-page-container">
       <section className="hero">
         <div>
           <p className="eyebrow"><Sparkles size={14} color="var(--rose-pink)" /> YOUR BEAUTY, EFFORTLESSLY BOOKED</p>
@@ -196,7 +183,7 @@ function Home() {
         <div className="heroimage">
           <img src={images[0]} alt="Salon styling" />
           <div className="rating">
-            <Star fill="currentColor" size={16} /> <b>4.9</b><span> Loved by 10,000+ clients</span>
+            <Star fill="#D4AF37" color="#D4AF37" size={16} /> <b>4.9</b><span> Loved by 10,000+ clients</span>
           </div>
         </div>
       </section>
@@ -224,7 +211,7 @@ function Home() {
           <p>Real verified reviews, transparent pricing, and effortless self-care rituals.</p>
         </div>
       </section>
-    </>
+    </div>
   );
 }
 
@@ -507,8 +494,28 @@ function Booking() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [catalogue, setCatalogue] = useState(null);
+  const [activeParlourId, setActiveParlourId] = useState(null);
   const [message, setMessage] = useState('');
   const [form, setForm] = useState({ service: '', beautician: '', date: '', slot: '' });
+
+  const loadCatalogue = async (parlourId, selectedDate, selectedBeautician) => {
+    setActiveParlourId(parlourId);
+    let url = `/catalogue/${parlourId}/`;
+    const params = new URLSearchParams();
+    if (selectedDate) params.append('date', selectedDate);
+    if (selectedBeautician) params.append('beautician', selectedBeautician);
+    if (params.toString()) url += `?${params.toString()}`;
+
+    try {
+      const { data } = await api.get(url);
+      setCatalogue(data);
+      if (form.slot && data.booked_slot_ids?.includes(Number(form.slot))) {
+        setForm((prev) => ({ ...prev, slot: '' }));
+      }
+    } catch {
+      setMessage('Unable to load booking options.');
+    }
+  };
 
   useEffect(() => {
     let parlourId = id;
@@ -516,26 +523,16 @@ function Booking() {
       api.get('/parlours/')
         .then(({ data }) => {
           if (data && data.length > 0) {
-            parlourId = data[0].id;
-            return api.get(`/catalogue/${parlourId}/`);
+            loadCatalogue(data[0].id, form.date, form.beautician);
           } else {
             throw new Error('No active parlours available.');
           }
         })
-        .then(({ data }) => setCatalogue(data))
         .catch(() => setMessage('Unable to load booking options.'));
     } else {
-      api.get(`/catalogue/${parlourId}/`)
-        .then(({ data }) => setCatalogue(data))
-        .catch(() => {
-          api.get('/parlours/').then(({ data }) => {
-            if (data && data.length > 0) {
-              return api.get(`/catalogue/${data[0].id}/`);
-            }
-          }).then(res => res && setCatalogue(res.data)).catch(() => setMessage('Unable to load booking options.'));
-        });
+      loadCatalogue(parlourId, form.date, form.beautician);
     }
-  }, [id]);
+  }, [id, form.date, form.beautician]);
 
   async function submit(event) {
     event.preventDefault();
@@ -553,9 +550,12 @@ function Booking() {
       showToast('Appointment requested successfully!', 'success');
       navigate('/appointments');
     } catch (err) {
-      const msg = err.response?.data?.detail || 'That slot is unavailable. Please choose another.';
+      const msg = err.response?.data?.detail || 'This slot has just been booked by another user. Please select another available time.';
       setMessage(msg);
       showToast(msg, 'error');
+      if (activeParlourId) {
+        loadCatalogue(activeParlourId, form.date, form.beautician);
+      }
     }
   }
 
@@ -571,7 +571,7 @@ function Booking() {
         <form onSubmit={submit} className="form-grid">
           <div className="form-group full">
             <label>Service Treatment</label>
-            <select required className="form-control" onChange={(e) => setForm({ ...form, service: e.target.value })}>
+            <select required className="form-control" value={form.service} onChange={(e) => setForm({ ...form, service: e.target.value })}>
               <option value="">Select a service</option>
               {catalogue.services.map((service) => (
                 <option value={service.id} key={service.id}>
@@ -583,7 +583,7 @@ function Booking() {
 
           <div className="form-group full">
             <label>Beauty Professional</label>
-            <select className="form-control" onChange={(e) => setForm({ ...form, beautician: e.target.value })}>
+            <select className="form-control" value={form.beautician} onChange={(e) => setForm({ ...form, beautician: e.target.value })}>
               <option value="">Auto-assign best available specialist</option>
               {catalogue.beauticians.map((b) => (
                 <option value={b.id} key={b.id}>
@@ -600,19 +600,28 @@ function Booking() {
               required
               min={new Date().toISOString().slice(0, 10)}
               className="form-control"
+              value={form.date}
               onChange={(e) => setForm({ ...form, date: e.target.value })}
             />
           </div>
 
           <div className="form-group">
             <label>Time Slot</label>
-            <select required className="form-control" onChange={(e) => setForm({ ...form, slot: e.target.value })}>
+            <select
+              required
+              className="form-control"
+              value={form.slot}
+              onChange={(e) => setForm({ ...form, slot: e.target.value })}
+            >
               <option value="">Select time</option>
-              {catalogue.slots?.map((slot) => (
-                <option value={slot.id} key={slot.id}>
-                  {slot.start_time.slice(0, 5)}
-                </option>
-              ))}
+              {catalogue.slots?.map((slot) => {
+                const isBooked = (catalogue.booked_slot_ids || []).includes(slot.id);
+                return (
+                  <option value={slot.id} key={slot.id} disabled={isBooked}>
+                    {slot.start_time.slice(0, 5)} {isBooked ? '— Booked' : ''}
+                  </option>
+                );
+              })}
             </select>
           </div>
 
@@ -753,7 +762,8 @@ function App() {
           <Route path="/user/notifications" element={<RequireRole role="USER"><UserLayout title="Notifications"><UserDashboardView /></UserLayout></RequireRole>} />
           <Route path="/my-reviews" element={<RequireRole role="USER"><UserLayout title="My Reviews"><MyReviewsView /></UserLayout></RequireRole>} />
           <Route path="/review/:id" element={<RequireRole role="USER"><UserLayout title="Write Review"><ReviewForm /></UserLayout></RequireRole>} />
-          <Route path="/profile" element={<RequireRole role="USER"><UserLayout title="My Settings"><SettingsView role="USER" /></UserLayout></RequireRole>} />
+          <Route path="/profile" element={<Navigate to="/user/settings" replace />} />
+          <Route path="/user/live-services" element={<RequireRole role="USER"><UserLayout title="Live Services"><LiveServicesView /></UserLayout></RequireRole>} />
           <Route path="/user/settings" element={<RequireRole role="USER"><UserLayout title="Settings"><SettingsView role="USER" /></UserLayout></RequireRole>} />
 
           {/* Signed-in Admin Layout Routes */}

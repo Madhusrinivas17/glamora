@@ -8,7 +8,7 @@ import {
   Bell,
   Heart,
   Star,
-  User,
+  Store,
   Settings,
   LogOut,
   Menu,
@@ -32,7 +32,7 @@ const userMenuItems = [
   { label: 'Notifications', path: '/user/notifications', icon: Bell },
   { label: 'Favourite Services', path: '/user/favourites', icon: Heart },
   { label: 'Reviews', path: '/my-reviews', icon: Star },
-  { label: 'Profile', path: '/profile', icon: User },
+  { label: 'Live Services', path: '/user/live-services', icon: Store },
   { label: 'Settings', path: '/user/settings', icon: Settings },
 ];
 
