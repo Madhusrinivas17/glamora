@@ -13,7 +13,7 @@ import uuid
 import logging
 from datetime import datetime
 from django.core.cache import cache
-from .utils import generate_otp, send_email_otp, send_sms_otp
+from .utils import generate_otp, send_email_otp
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ class SendOTPView(generics.GenericAPIView):
                 )
 
             otp_code = generate_otp()
-            method = (request.data.get('method') or pending_data.get('method') or 'email').strip()
+            method = 'email'
 
             pending_data['otp'] = otp_code
             pending_data['otp_created_at'] = timezone.now().isoformat()
@@ -61,24 +61,21 @@ class SendOTPView(generics.GenericAPIView):
 
             cache.set(f"pending_reg_{reg_token}", pending_data, timeout=300)
 
-            # Trigger Email/SMS delivery
-            if method == 'phone':
-                success, delivery_msg = send_sms_otp(pending_data['phone'], otp_code)
-            else:
-                success, delivery_msg = send_email_otp(pending_data['email'], pending_data['first_name'], otp_code)
+            # Trigger Email delivery
+            success, delivery_msg = send_email_otp(pending_data['email'], pending_data['first_name'], otp_code)
 
             if not success:
-                logger.error(f"[RESEND-OTP DELIVERY FAILED] Target: {pending_data.get('email' if method == 'email' else 'phone')} | Method: {method} | Error: {delivery_msg}")
+                logger.error(f"[RESEND-OTP DELIVERY FAILED] Target: {pending_data.get('email')} | Error: {delivery_msg}")
                 return Response(
                     {'detail': delivery_msg},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            logger.info(f"[RESEND-OTP SUCCESS] Sent to {pending_data.get('email' if method == 'email' else 'phone')} via {method}")
+            logger.info(f"[RESEND-OTP SUCCESS] Sent to {pending_data.get('email')} via EMAIL")
             return Response({
-                'detail': f'New OTP code sent via {method.upper()}.',
+                'detail': 'New OTP code sent to your email address.',
                 'registration_token': reg_token,
-                'method': method,
+                'method': 'email',
                 'email': pending_data['email'],
                 'phone': pending_data['phone'],
                 'expires_in': 300
@@ -103,30 +100,27 @@ class SendOTPView(generics.GenericAPIView):
             'otp': otp_code,
             'otp_created_at': timezone.now().isoformat(),
             'otp_attempts': 0,
-            'method': data['method'],
+            'method': 'email',
         }
 
         cache.set(f"pending_reg_{new_token}", payload, timeout=300)
-        logger.info(f"[NEW REGISTRATION OTP SAVED] Token: {new_token} | Target: {data['email']} / {data['phone']} | Method: {data['method']}")
+        logger.info(f"[NEW REGISTRATION OTP SAVED] Token: {new_token} | Target: {data['email']}")
 
-        # Trigger Email/SMS delivery
-        if data['method'] == 'phone':
-            success, delivery_msg = send_sms_otp(data['phone'], otp_code)
-        else:
-            success, delivery_msg = send_email_otp(data['email'], data['first_name'], otp_code)
+        # Trigger Email delivery
+        success, delivery_msg = send_email_otp(data['email'], data['first_name'], otp_code)
 
         if not success:
-            logger.error(f"[SEND-OTP DELIVERY FAILED] Target: {data['email'] if data['method'] == 'email' else data['phone']} | Method: {data['method']} | Error: {delivery_msg}")
+            logger.error(f"[SEND-OTP DELIVERY FAILED] Target: {data['email']} | Error: {delivery_msg}")
             return Response(
                 {'detail': delivery_msg},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        logger.info(f"[SEND-OTP SUCCESS] Sent to {data['email'] if data['method'] == 'email' else data['phone']} via {data['method']}")
+        logger.info(f"[SEND-OTP SUCCESS] Sent to {data['email']} via EMAIL")
         return Response({
-            'detail': f'Registration details accepted. Verification code sent via {data["method"].upper()}.',
+            'detail': 'Registration details accepted. Verification code sent to your email address.',
             'registration_token': new_token,
-            'method': data['method'],
+            'method': 'email',
             'email': data['email'],
             'phone': data['phone'],
             'expires_in': 300

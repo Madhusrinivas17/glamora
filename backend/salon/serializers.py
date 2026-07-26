@@ -48,7 +48,7 @@ class SendOTPSerializer(serializers.Serializer):
     confirm_password = serializers.CharField(write_only=True, required=False, allow_blank=True)
     role = serializers.CharField(required=False, default='USER')
     parlour_name = serializers.CharField(required=False, allow_blank=True)
-    method = serializers.ChoiceField(choices=['email', 'phone'], default='email')
+    method = serializers.CharField(required=False, default='email')
 
     def validate(self, data):
         errors = {}
@@ -58,7 +58,7 @@ class SendOTPSerializer(serializers.Serializer):
         location = (data.get('location') or '').strip()
         role = (data.get('role') or 'USER').strip().upper()
         password = data.get('password') or ''
-        method = data.get('method') or 'email'
+        method = 'email'
 
         if not first_name:
             errors['first_name'] = 'Full name is required.'

@@ -1,13 +1,11 @@
 from datetime import timedelta
 from django.utils import timezone
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from .models import Parlour, User
 
-
-from django.test import TestCase, override_settings
 
 class AuthenticationFlowTests(TestCase):
     def setUp(self):
@@ -34,7 +32,7 @@ class AuthenticationFlowTests(TestCase):
         return self.client.post('/api/auth/send-otp/', payload, format='json')
 
     def test_otp_registration_and_verification_flow(self):
-        # Step 1: Submit registration details & send OTP
+        # Step 1: Submit registration details & send Email OTP
         response = self.send_otp()
         self.assertEqual(response.status_code, 200)
         self.assertIn('registration_token', response.data)
@@ -98,15 +96,6 @@ class AuthenticationFlowTests(TestCase):
         owner = User.objects.get(email='owner@example.com')
         self.assertTrue(owner.is_verified)
         self.assertTrue(Parlour.objects.filter(owner=owner, name='Glamora Luxury Spa').exists())
-
-    def test_unconfigured_sms_provider_returns_400_error(self):
-        send_resp = self.send_otp(
-            email='smsuser@example.com',
-            phone='7777777777',
-            method='phone'
-        )
-        self.assertEqual(send_resp.status_code, 400)
-        self.assertIn('currently unavailable', str(send_resp.data).lower())
 
     @override_settings(
         EMAIL_HOST_USER='',

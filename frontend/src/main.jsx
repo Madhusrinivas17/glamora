@@ -221,7 +221,6 @@ function Auth({ register = false }) {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [role, setRole] = useState('USER');
-  const [method, setMethod] = useState('email'); // 'email' | 'phone'
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -238,7 +237,7 @@ function Auth({ register = false }) {
 
   const change = (event) => setForm({ ...form, [event.target.name]: event.target.value });
 
-  // Registration Submit: Validate -> Send OTP -> Navigate to /verify-otp
+  // Registration Submit: Validate -> Send Email OTP -> Navigate to /verify-otp
   const handleRegisterSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -264,7 +263,7 @@ function Auth({ register = false }) {
         confirm: form.confirm,
         confirm_password: form.confirm,
         role,
-        method
+        method: 'email'
       });
 
       const token = response.data.registration_token;
@@ -275,11 +274,11 @@ function Auth({ register = false }) {
         registration_token: token,
         email: response.data.email,
         phone: response.data.phone,
-        method: response.data.method,
+        method: 'email',
         expiryTimestamp
       }));
 
-      showToast(response.data.detail || `Registration submitted! OTP code sent via ${method.toUpperCase()}.`, 'success');
+      showToast(response.data.detail || 'Registration submitted! OTP code sent to your email address.', 'success');
       navigate('/verify-otp');
     } catch (err) {
       const msg = errorMessage(err);
@@ -482,36 +481,6 @@ function Auth({ register = false }) {
               </div>
             </div>
 
-            {/* Verification Method Selection Cards */}
-            <div style={{ marginTop: '16px', marginBottom: '8px' }}>
-              <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-main)', display: 'block', marginBottom: '8px' }}>
-                Select Verification Channel
-              </label>
-              <div className="otp-method-grid" style={{ margin: '0' }}>
-                <div
-                  type="button"
-                  className={`otp-method-card ${method === 'email' ? 'active' : ''}`}
-                  onClick={() => setMethod('email')}
-                >
-                  <div className="otp-method-icon">
-                    <Mail size={18} />
-                  </div>
-                  <div className="otp-method-title">Email OTP</div>
-                </div>
-
-                <div
-                  type="button"
-                  className={`otp-method-card ${method === 'phone' ? 'active' : ''}`}
-                  onClick={() => setMethod('phone')}
-                >
-                  <div className="otp-method-icon">
-                    <Phone size={18} />
-                  </div>
-                  <div className="otp-method-title">Phone SMS OTP</div>
-                </div>
-              </div>
-            </div>
-
             {error && (
               <div style={{ padding: '10px 14px', borderRadius: '10px', background: '#F8D7DA', color: '#721C24', fontSize: '13px', marginBottom: '16px' }}>
                 {error}
@@ -519,7 +488,7 @@ function Auth({ register = false }) {
             )}
 
             <button disabled={loading} className="btn btn-full" style={{ marginTop: '16px' }}>
-              {loading ? 'Submitting Details...' : 'Register & Send OTP'} <Sparkles size={16} />
+              {loading ? 'Submitting Details...' : 'Register & Send Email OTP'} <Sparkles size={16} />
             </button>
           </form>
         ) : (
@@ -771,7 +740,7 @@ function VerifyOTPPage() {
             Account Verification
           </h2>
           <p className="auth-subtitle">
-            Enter the 6-digit code sent to your <b>{session.method === 'phone' ? session.phone : session.email}</b>.
+            Enter the 6-digit code sent to your email address (<b>{session.email}</b>).
           </p>
         </div>
 
