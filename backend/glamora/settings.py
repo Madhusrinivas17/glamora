@@ -53,21 +53,25 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'glamora.wsgi.application'
 
-engine = os.getenv('DATABASE_ENGINE', 'django.db.backends.mysql')
-db_name = os.getenv('DATABASE_NAME', 'glamora_db')
-
 DATABASES = {
     'default': {
-        'ENGINE': engine,
-        'NAME': db_name,
-        'USER': os.getenv('DATABASE_USER', 'root'),
-        'PASSWORD': os.getenv('DATABASE_PASSWORD', 'Madhu@Sri@2717'),
-        'HOST': os.getenv('DATABASE_HOST', '127.0.0.1'),
-        'PORT': os.getenv('DATABASE_PORT', '3306'),
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': os.getenv('DATABASE_NAME', 'defaultdb'),
+        'USER': os.getenv('DATABASE_USER', 'avnadmin'),
+        'PASSWORD': os.getenv('DATABASE_PASSWORD'),
+        'HOST': os.getenv(
+            'DATABASE_HOST',
+            'glamora-mysql-sves-madhu.f.aivencloud.com'
+        ),
+        'PORT': os.getenv('DATABASE_PORT', '22774'),
+        'OPTIONS': {
+            'charset': 'utf8mb4',
+            'ssl': {
+                'ssl_mode': 'REQUIRED',
+            },
+        },
     }
 }
-if 'mysql' in engine:
-    DATABASES['default']['OPTIONS'] = {'charset': 'utf8mb4'}
 
 AUTH_PASSWORD_VALIDATORS = []
 
