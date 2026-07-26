@@ -15,6 +15,8 @@ router.register('appointments', views.AppointmentViewSet, basename='appointment'
 
 urlpatterns = [
     path('auth/register/', views.RegisterView.as_view(), name='register'),
+    path('auth/send-otp/', views.SendOTPView.as_view(), name='send_otp'),
+    path('auth/verify-otp/', views.VerifyOTPView.as_view(), name='verify_otp'),
     path('auth/login/', views.LoginView.as_view(), name='login'),
     path('auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('auth/profile/', views.profile, name='profile'),

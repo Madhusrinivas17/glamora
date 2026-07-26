@@ -9,6 +9,11 @@ class User(AbstractUser):
     phone=models.CharField(max_length=20, unique=True)
     location=models.CharField(max_length=180)
     role=models.CharField(max_length=10, choices=ROLE_CHOICES, default='USER')
+    is_verified=models.BooleanField(default=False)
+    otp=models.CharField(max_length=6, blank=True, null=True)
+    otp_created_at=models.DateTimeField(blank=True, null=True)
+    otp_attempts=models.IntegerField(default=0)
+    otp_method=models.CharField(max_length=10, blank=True, null=True)
     USERNAME_FIELD='email'; REQUIRED_FIELDS=['phone','first_name','location']
 
 class Parlour(models.Model):

@@ -1,3 +1,4 @@
+import glamoraImage from './images/GLAMORA.jpg';
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
@@ -59,7 +60,7 @@ import {
 import LiveServicesView from './pages/LiveServicesView';
 
 const images = [
-  'https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=1200&q=80',
+  'glamoraImage',
   'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=1200&q=80'
 ];
 
@@ -181,9 +182,9 @@ function Home() {
           </div>
         </div>
         <div className="heroimage">
-          <img src={images[0]} alt="Salon styling" />
+          <img src={glamoraImage} alt="Salon styling" />
           <div className="rating">
-            <Star fill="#D4AF37" color="#D4AF37" size={16} /> <b>4.9</b><span> Loved by 10,000+ clients</span>
+            <Star fill="#D4AF37" color="#D4AF37" size={10} /> <b>4.9</b><span> Loved by 10,000+ clients</span>
           </div>
         </div>
       </section>
@@ -220,6 +221,7 @@ function Auth({ register = false }) {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [role, setRole] = useState('USER');
+  const [method, setMethod] = useState('email'); // 'email' | 'phone'
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -236,44 +238,79 @@ function Auth({ register = false }) {
 
   const change = (event) => setForm({ ...form, [event.target.name]: event.target.value });
 
-  async function submit(event) {
-    event.preventDefault();
+  // Registration Submit: Validate -> Send OTP -> Navigate to /verify-otp
+  const handleRegisterSubmit = async (e) => {
+    e.preventDefault();
     setError('');
-    if (register && form.password !== form.confirm) {
-      setError('Passwords do not match.');
-      return;
-    }
+
+    if (!form.first_name.trim()) return setError('Full name is required.');
+    if (!form.email.trim() || !/\S+@\S+\.\S+/.test(form.email)) return setError('A valid email address is required.');
+    if (!form.phone.trim() || form.phone.replace(/\D/g, '').length < 7) return setError('A valid phone number (at least 7 digits) is required.');
+    if (!form.location.trim()) return setError('Location is required.');
+    if (role === 'ADMIN' && !form.parlour_name.trim()) return setError('Parlour name is required for Salon Owner.');
+    if (!form.password) return setError('Password is required.');
+    if (form.password.length < 8) return setError('Password must be at least 8 characters long.');
+    if (form.password !== form.confirm) return setError('Passwords do not match.');
+
     setLoading(true);
     try {
-      if (register) {
-        await api.post('/auth/register/', {
-          first_name: form.first_name.trim(),
-          email: form.email.trim(),
-          phone: form.phone.trim(),
-          location: form.location.trim(),
-          parlour_name: form.parlour_name.trim(),
-          password: form.password,
-          confirm: form.confirm,
-          confirm_password: form.confirm,
-          role
-        });
-        showToast('Account created! Please sign in.', 'success');
-        navigate('/login');
-      } else {
-        const response = await api.post('/auth/login/', {
-          identifier: form.identifier.trim(),
-          password: form.password,
-          role
-        });
-        if (!response.data.access || !response.data.refresh || !response.data.user?.role) {
-          throw new Error('The server returned an incomplete login response.');
-        }
-        localStorage.setItem('token', response.data.access);
-        localStorage.setItem('refresh', response.data.refresh);
-        localStorage.setItem('user', JSON.stringify(response.data.user));
-        showToast(`Welcome back, ${response.data.user.name || 'Beautiful'}!`, 'success');
-        navigate(response.data.user.role === 'ADMIN' ? '/admin-dashboard' : '/user-dashboard');
+      const response = await api.post('/auth/send-otp/', {
+        first_name: form.first_name.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        location: form.location.trim(),
+        parlour_name: form.parlour_name.trim(),
+        password: form.password,
+        confirm: form.confirm,
+        confirm_password: form.confirm,
+        role,
+        method
+      });
+
+      const token = response.data.registration_token;
+      const expiryTimestamp = Date.now() + 300 * 1000; // 5 minutes
+
+      // Store pending registration session in sessionStorage for persistence across refresh
+      sessionStorage.setItem('glamora_pending_otp', JSON.stringify({
+        registration_token: token,
+        email: response.data.email,
+        phone: response.data.phone,
+        method: response.data.method,
+        expiryTimestamp
+      }));
+
+      showToast(response.data.detail || `Registration submitted! OTP code sent via ${method.toUpperCase()}.`, 'success');
+      navigate('/verify-otp');
+    } catch (err) {
+      const msg = errorMessage(err);
+      setError(msg);
+      showToast(msg, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Login Submit
+  const handleLoginSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      const response = await api.post('/auth/login/', {
+        identifier: form.identifier.trim(),
+        password: form.password,
+        role
+      });
+
+      if (!response.data.access || !response.data.refresh || !response.data.user?.role) {
+        throw new Error('The server returned an incomplete login response.');
       }
+      localStorage.setItem('token', response.data.access);
+      localStorage.setItem('refresh', response.data.refresh);
+      localStorage.setItem('user', JSON.stringify(response.data.user));
+      showToast(`Welcome back, ${response.data.user.name || 'Beautiful'}!`, 'success');
+      navigate(response.data.user.role === 'ADMIN' ? '/admin-dashboard' : '/user-dashboard');
     } catch (err) {
       const msg = err.message === 'The server returned an incomplete login response.' ? err.message : errorMessage(err);
       setError(msg);
@@ -281,7 +318,7 @@ function Auth({ register = false }) {
     } finally {
       setLoading(false);
     }
-  }
+  };
 
   return (
     <div className="auth-page-wrapper">
@@ -320,135 +357,115 @@ function Auth({ register = false }) {
           </button>
         </div>
 
-        {/* Auth Form */}
-        <form onSubmit={submit}>
-          {register ? (
-            <>
-              <div className="auth-field">
-                <label><User size={14} /> Full Name</label>
-                <div className="auth-input-wrapper">
-                  <User className="auth-input-icon" size={18} />
-                  <input
-                    required
-                    type="text"
-                    name="first_name"
-                    placeholder="Jane Doe"
-                    className="auth-input"
-                    value={form.first_name}
-                    onChange={change}
-                  />
-                </div>
-              </div>
-
-              <div className="auth-field">
-                <label><Mail size={14} /> Email Address</label>
-                <div className="auth-input-wrapper">
-                  <Mail className="auth-input-icon" size={18} />
-                  <input
-                    required
-                    type="email"
-                    name="email"
-                    placeholder="jane@example.com"
-                    className="auth-input"
-                    value={form.email}
-                    onChange={change}
-                  />
-                </div>
-              </div>
-
-              <div className="auth-field">
-                <label><Phone size={14} /> Phone Number</label>
-                <div className="auth-input-wrapper">
-                  <Phone className="auth-input-icon" size={18} />
-                  <input
-                    required
-                    type="text"
-                    name="phone"
-                    placeholder="+1 (555) 000-0000"
-                    className="auth-input"
-                    value={form.phone}
-                    onChange={change}
-                  />
-                </div>
-              </div>
-
-              <div className="auth-field">
-                <label><MapPin size={14} /> Location</label>
-                <div className="auth-input-wrapper">
-                  <MapPin className="auth-input-icon" size={18} />
-                  <input
-                    required
-                    type="text"
-                    name="location"
-                    placeholder="Beverly Hills, CA"
-                    className="auth-input"
-                    value={form.location}
-                    onChange={change}
-                  />
-                </div>
-              </div>
-
-              {role === 'ADMIN' && (
-                <div className="auth-field">
-                  <label><Building size={14} /> Parlour Name</label>
-                  <div className="auth-input-wrapper">
-                    <Building className="auth-input-icon" size={18} />
-                    <input
-                      required
-                      type="text"
-                      name="parlour_name"
-                      placeholder="Glamora Spa"
-                      className="auth-input"
-                      value={form.parlour_name}
-                      onChange={change}
-                    />
-                  </div>
-                </div>
-              )}
-            </>
-          ) : (
+        {/* REGISTER FORM */}
+        {register ? (
+          <form onSubmit={handleRegisterSubmit}>
             <div className="auth-field">
-              <label><Mail size={14} /> Email or Phone Number</label>
+              <label><User size={14} /> Full Name</label>
               <div className="auth-input-wrapper">
-                <Mail className="auth-input-icon" size={18} />
+                <User className="auth-input-icon" size={18} />
                 <input
                   required
                   type="text"
-                  name="identifier"
-                  placeholder="Enter email or phone"
+                  name="first_name"
+                  placeholder="Jane Doe"
                   className="auth-input"
-                  value={form.identifier}
+                  value={form.first_name}
                   onChange={change}
                 />
               </div>
             </div>
-          )}
 
-          <div className="auth-field">
-            <label><Lock size={14} /> Password</label>
-            <div className="auth-input-wrapper">
-              <Lock className="auth-input-icon" size={18} />
-              <input
-                required
-                minLength="8"
-                type={showPassword ? 'text' : 'password'}
-                name="password"
-                placeholder="••••••••"
-                className="auth-input"
-                value={form.password}
-                onChange={change}
-              />
-              <button
-                type="button"
-                className="auth-password-toggle"
-                onClick={() => setShowPassword(!showPassword)}
-              >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
+            <div className="auth-field">
+              <label><Mail size={14} /> Email Address</label>
+              <div className="auth-input-wrapper">
+                <Mail className="auth-input-icon" size={18} />
+                <input
+                  required
+                  type="email"
+                  name="email"
+                  placeholder="jane@example.com"
+                  className="auth-input"
+                  value={form.email}
+                  onChange={change}
+                />
+              </div>
             </div>
-          </div>
 
-          {register && (
+            <div className="auth-field">
+              <label><Phone size={14} /> Phone Number</label>
+              <div className="auth-input-wrapper">
+                <Phone className="auth-input-icon" size={18} />
+                <input
+                  required
+                  type="text"
+                  name="phone"
+                  placeholder="+1 (555) 000-0000"
+                  className="auth-input"
+                  value={form.phone}
+                  onChange={change}
+                />
+              </div>
+            </div>
+
+            <div className="auth-field">
+              <label><MapPin size={14} /> Location</label>
+              <div className="auth-input-wrapper">
+                <MapPin className="auth-input-icon" size={18} />
+                <input
+                  required
+                  type="text"
+                  name="location"
+                  placeholder="Beverly Hills, CA"
+                  className="auth-input"
+                  value={form.location}
+                  onChange={change}
+                />
+              </div>
+            </div>
+
+            {role === 'ADMIN' && (
+              <div className="auth-field">
+                <label><Building size={14} /> Parlour Name</label>
+                <div className="auth-input-wrapper">
+                  <Building className="auth-input-icon" size={18} />
+                  <input
+                    required
+                    type="text"
+                    name="parlour_name"
+                    placeholder="Glamora Spa"
+                    className="auth-input"
+                    value={form.parlour_name}
+                    onChange={change}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="auth-field">
+              <label><Lock size={14} /> Password</label>
+              <div className="auth-input-wrapper">
+                <Lock className="auth-input-icon" size={18} />
+                <input
+                  required
+                  minLength="8"
+                  type={showPassword ? 'text' : 'password'}
+                  name="password"
+                  placeholder="••••••••"
+                  className="auth-input"
+                  value={form.password}
+                  onChange={change}
+                />
+                <button
+                  type="button"
+                  className="auth-password-toggle"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+            </div>
+
             <div className="auth-field">
               <label><Lock size={14} /> Confirm Password</label>
               <div className="auth-input-wrapper">
@@ -464,7 +481,333 @@ function Auth({ register = false }) {
                 />
               </div>
             </div>
-          )}
+
+            {/* Verification Method Selection Cards */}
+            <div style={{ marginTop: '16px', marginBottom: '8px' }}>
+              <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-main)', display: 'block', marginBottom: '8px' }}>
+                Select Verification Channel
+              </label>
+              <div className="otp-method-grid" style={{ margin: '0' }}>
+                <div
+                  type="button"
+                  className={`otp-method-card ${method === 'email' ? 'active' : ''}`}
+                  onClick={() => setMethod('email')}
+                >
+                  <div className="otp-method-icon">
+                    <Mail size={18} />
+                  </div>
+                  <div className="otp-method-title">Email OTP</div>
+                </div>
+
+                <div
+                  type="button"
+                  className={`otp-method-card ${method === 'phone' ? 'active' : ''}`}
+                  onClick={() => setMethod('phone')}
+                >
+                  <div className="otp-method-icon">
+                    <Phone size={18} />
+                  </div>
+                  <div className="otp-method-title">Phone SMS OTP</div>
+                </div>
+              </div>
+            </div>
+
+            {error && (
+              <div style={{ padding: '10px 14px', borderRadius: '10px', background: '#F8D7DA', color: '#721C24', fontSize: '13px', marginBottom: '16px' }}>
+                {error}
+              </div>
+            )}
+
+            <button disabled={loading} className="btn btn-full" style={{ marginTop: '16px' }}>
+              {loading ? 'Submitting Details...' : 'Register & Send OTP'} <Sparkles size={16} />
+            </button>
+          </form>
+        ) : (
+          /* LOGIN FORM */
+          <form onSubmit={handleLoginSubmit}>
+            <div className="auth-field">
+              <label><Mail size={14} /> Email or Phone Number</label>
+              <div className="auth-input-wrapper">
+                <Mail className="auth-input-icon" size={18} />
+                <input
+                  required
+                  type="text"
+                  name="identifier"
+                  placeholder="Enter email or phone"
+                  className="auth-input"
+                  value={form.identifier}
+                  onChange={change}
+                />
+              </div>
+            </div>
+
+            <div className="auth-field">
+              <label><Lock size={14} /> Password</label>
+              <div className="auth-input-wrapper">
+                <Lock className="auth-input-icon" size={18} />
+                <input
+                  required
+                  minLength="8"
+                  type={showPassword ? 'text' : 'password'}
+                  name="password"
+                  placeholder="••••••••"
+                  className="auth-input"
+                  value={form.password}
+                  onChange={change}
+                />
+                <button
+                  type="button"
+                  className="auth-password-toggle"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+            </div>
+
+            {error && (
+              <div style={{ padding: '10px 14px', borderRadius: '10px', background: '#F8D7DA', color: '#721C24', fontSize: '13px', marginBottom: '16px' }}>
+                {error}
+              </div>
+            )}
+
+            <button disabled={loading} className="btn btn-full" style={{ marginTop: '12px' }}>
+              {loading ? 'Signing In...' : 'Sign In'} <Sparkles size={16} />
+            </button>
+          </form>
+        )}
+
+        <p style={{ textAlign: 'center', marginTop: '24px', fontSize: '14px', color: 'var(--text-muted)' }}>
+          {register ? 'Already have an account? ' : 'New to Glamora? '}
+          <Link to={register ? '/login' : '/register'} style={{ color: 'var(--rose-pink)', fontWeight: 600 }}>
+            {register ? 'Sign in' : 'Create account'}
+          </Link>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// Dedicated Persistent OTP Verification Page Component
+function VerifyOTPPage() {
+  const navigate = useNavigate();
+  const { showToast } = useToast();
+  const [session, setSession] = useState(null);
+  const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  // Read pending OTP session from sessionStorage on mount & state check
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('glamora_pending_otp');
+      if (!raw) {
+        showToast('No active verification session found. Please register first.', 'error');
+        navigate('/register', { replace: true });
+        return;
+      }
+
+      const data = JSON.parse(raw);
+      const now = Date.now();
+      const secondsLeft = Math.floor((data.expiryTimestamp - now) / 1000);
+
+      if (secondsLeft <= 0) {
+        sessionStorage.removeItem('glamora_pending_otp');
+        showToast('Verification code expired. Please register again.', 'error');
+        navigate('/register', { replace: true });
+        return;
+      }
+
+      setSession(data);
+      setRemainingSeconds(secondsLeft);
+    } catch {
+      sessionStorage.removeItem('glamora_pending_otp');
+      navigate('/register', { replace: true });
+    }
+  }, [navigate]);
+
+  // Expiry Countdown Timer
+  useEffect(() => {
+    if (!session) return;
+    const interval = setInterval(() => {
+      const secondsLeft = Math.floor((session.expiryTimestamp - Date.now()) / 1000);
+      if (secondsLeft <= 0) {
+        setRemainingSeconds(0);
+        clearInterval(interval);
+      } else {
+        setRemainingSeconds(secondsLeft);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [session]);
+
+  // Resend Cooldown Timer
+  useEffect(() => {
+    let cooldownId;
+    if (resendCooldown > 0) {
+      cooldownId = setInterval(() => {
+        setResendCooldown((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(cooldownId);
+  }, [resendCooldown]);
+
+  const handleDigitChange = (index, value) => {
+    if (!/^\d*$/.test(value)) return;
+    const newDigits = [...otpDigits];
+    newDigits[index] = value.slice(-1);
+    setOtpDigits(newDigits);
+
+    if (value && index < 5) {
+      const nextInput = document.getElementById(`verify-otp-input-${index + 1}`);
+      if (nextInput) nextInput.focus();
+    }
+  };
+
+  const handleKeyDown = (index, e) => {
+    if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
+      const prevInput = document.getElementById(`verify-otp-input-${index - 1}`);
+      if (prevInput) prevInput.focus();
+    }
+  };
+
+  const handlePaste = (e) => {
+    e.preventDefault();
+    const pastedData = e.clipboardData.getData('text').trim();
+    if (/^\d{6}$/.test(pastedData)) {
+      setOtpDigits(pastedData.split(''));
+      const lastInput = document.getElementById('verify-otp-input-5');
+      if (lastInput) lastInput.focus();
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (!session || resendCooldown > 0 || loading) return;
+    setError('');
+    setLoading(true);
+
+    try {
+      const response = await api.post('/auth/send-otp/', {
+        registration_token: session.registration_token,
+        method: session.method
+      });
+
+      const newExpiryTimestamp = Date.now() + (response.data.expires_in || 300) * 1000;
+      const updatedSession = { ...session, expiryTimestamp: newExpiryTimestamp };
+
+      sessionStorage.setItem('glamora_pending_otp', JSON.stringify(updatedSession));
+      setSession(updatedSession);
+      setRemainingSeconds(response.data.expires_in || 300);
+      setResendCooldown(30);
+      setOtpDigits(['', '', '', '', '', '']);
+
+      showToast(response.data.detail || 'New OTP verification code sent!', 'success');
+    } catch (err) {
+      const msg = errorMessage(err);
+      setError(msg);
+      showToast(msg, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOtpSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+
+    const otpCode = otpDigits.join('');
+    if (otpCode.length !== 6) {
+      setError('Please enter all 6 digits of the verification code.');
+      return;
+    }
+
+    if (remainingSeconds <= 0) {
+      setError('OTP has expired. Please click Resend Code or start registration again.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await api.post('/auth/verify-otp/', {
+        registration_token: session.registration_token,
+        otp: otpCode
+      });
+
+      // Clear pending registration state from sessionStorage
+      sessionStorage.removeItem('glamora_pending_otp');
+
+      showToast(response.data.detail || 'Account created and verified successfully! Please sign in.', 'success');
+      navigate('/login');
+    } catch (err) {
+      const msg = errorMessage(err);
+      setError(msg);
+      showToast(msg, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatTimer = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
+  if (!session) return null;
+
+  return (
+    <div className="auth-page-wrapper">
+      <div className="auth-bg-blob-1" />
+      <div className="auth-bg-blob-2" />
+
+      <div className="auth-card">
+        <div className="auth-brand">
+          <Link className="logo" to="/">
+            glamora<span>*</span>
+          </Link>
+          <h2 style={{ fontSize: '24px', marginTop: '6px', fontWeight: 600 }}>
+            Account Verification
+          </h2>
+          <p className="auth-subtitle">
+            Enter the 6-digit code sent to your <b>{session.method === 'phone' ? session.phone : session.email}</b>.
+          </p>
+        </div>
+
+        <form onSubmit={handleVerifyOtpSubmit}>
+          <div className="otp-timer-box">
+            <span className="otp-timer-text">
+              <Clock size={16} color="var(--rose-pink)" /> Code valid for:
+            </span>
+            <span
+              style={{
+                fontWeight: 700,
+                color: remainingSeconds > 60 ? 'var(--deep-plum)' : '#D9534F',
+                fontSize: '14px',
+                fontFamily: 'monospace'
+              }}
+            >
+              {formatTimer(remainingSeconds)}
+            </span>
+          </div>
+
+          <div className="otp-digit-container">
+            {otpDigits.map((digit, index) => (
+              <input
+                key={index}
+                id={`verify-otp-input-${index}`}
+                type="text"
+                inputMode="numeric"
+                maxLength={1}
+                className="otp-digit-input"
+                value={digit}
+                onChange={(e) => handleDigitChange(index, e.target.value)}
+                onKeyDown={(e) => handleKeyDown(index, e)}
+                onPaste={handlePaste}
+              />
+            ))}
+          </div>
 
           {error && (
             <div style={{ padding: '10px 14px', borderRadius: '10px', background: '#F8D7DA', color: '#721C24', fontSize: '13px', marginBottom: '16px' }}>
@@ -472,16 +815,24 @@ function Auth({ register = false }) {
             </div>
           )}
 
-          <button disabled={loading} className="btn btn-full" style={{ marginTop: '12px' }}>
-            {loading ? 'Processing...' : register ? 'Create Account' : 'Sign In'} <Sparkles size={16} />
+          <button disabled={loading} type="submit" className="btn btn-full" style={{ marginTop: '8px' }}>
+            {loading ? 'Verifying & Creating Account...' : 'Verify & Create Account'} <CheckCircle2 size={16} />
           </button>
 
-          <p style={{ textAlign: 'center', marginTop: '20px', fontSize: '14px', color: 'var(--text-muted)' }}>
-            {register ? 'Already have an account? ' : 'New to Glamora? '}
-            <Link to={register ? '/login' : '/register'} style={{ color: 'var(--rose-pink)', fontWeight: 600 }}>
-              {register ? 'Sign in' : 'Create account'}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px' }}>
+            <button
+              type="button"
+              className="otp-resend-btn"
+              disabled={resendCooldown > 0 || loading}
+              onClick={handleResendOtp}
+            >
+              {resendCooldown > 0 ? `Resend Code in ${resendCooldown}s` : 'Resend OTP Code'}
+            </button>
+
+            <Link to="/register" className="textlink" style={{ fontSize: '13px' }}>
+              Cancel Registration
             </Link>
-          </p>
+          </div>
         </form>
       </div>
     </div>
@@ -752,6 +1103,7 @@ function App() {
           <Route path="/about" element={<><PublicNav /><Basic title="Beauty, with intention." /></>} />
           <Route path="/login" element={<Auth />} />
           <Route path="/register" element={<Auth register />} />
+          <Route path="/verify-otp" element={<VerifyOTPPage />} />
           <Route path="/book" element={<UserLayout title="Book Appointment"><Booking /></UserLayout>} />
           <Route path="/book/:id" element={<UserLayout title="Book Appointment"><Booking /></UserLayout>} />
 

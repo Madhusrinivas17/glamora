@@ -9,6 +9,14 @@ from django.contrib.auth import authenticate
 from .models import *
 from .serializers import *
 
+import uuid
+import logging
+from datetime import datetime
+from django.core.cache import cache
+from .utils import generate_otp, send_email_otp, send_sms_otp
+
+logger = logging.getLogger(__name__)
+
 class IsOwner(permissions.BasePermission):
     def has_permission(self, request, view):
         return request.user.is_authenticated and request.user.role == 'ADMIN'
@@ -16,9 +24,158 @@ class IsOwner(permissions.BasePermission):
 def owner_parlour(user):
     return getattr(user, 'parlour', None)
 
-class RegisterView(generics.CreateAPIView):
+class SendOTPView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]
-    serializer_class = RegisterSerializer
+
+    def post(self, request, *args, **kwargs):
+        reg_token = (request.data.get('registration_token') or '').strip()
+        logger.info(f"[POST /api/auth/send-otp/] Received request data: {request.data}")
+
+        # Handle Resend OTP for existing pending registration session
+        if reg_token:
+            pending_data = cache.get(f"pending_reg_{reg_token}")
+            if not pending_data:
+                logger.warning(f"[RESEND-OTP FAILED] Invalid or expired token: {reg_token}")
+                return Response(
+                    {'detail': 'OTP session has expired. Please submit registration again.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            otp_created_at = datetime.fromisoformat(pending_data['otp_created_at'])
+            time_elapsed = (timezone.now() - otp_created_at).total_seconds()
+            if time_elapsed < 30:
+                cooldown_remaining = int(30 - time_elapsed)
+                logger.warning(f"[RESEND-OTP COOLDOWN] Wait {cooldown_remaining}s for token {reg_token}")
+                return Response(
+                    {'detail': f'Please wait {cooldown_remaining} seconds before requesting a new OTP.'},
+                    status=status.HTTP_429_TOO_MANY_REQUESTS
+                )
+
+            otp_code = generate_otp()
+            method = (request.data.get('method') or pending_data.get('method') or 'email').strip()
+
+            pending_data['otp'] = otp_code
+            pending_data['otp_created_at'] = timezone.now().isoformat()
+            pending_data['otp_attempts'] = 0
+            pending_data['method'] = method
+
+            cache.set(f"pending_reg_{reg_token}", pending_data, timeout=300)
+
+            # Trigger Email/SMS delivery
+            if method == 'phone':
+                success, delivery_msg = send_sms_otp(pending_data['phone'], otp_code)
+            else:
+                success, delivery_msg = send_email_otp(pending_data['email'], pending_data['first_name'], otp_code)
+
+            if not success:
+                logger.error(f"[RESEND-OTP DELIVERY FAILED] Target: {pending_data.get('email' if method == 'email' else 'phone')} | Method: {method} | Error: {delivery_msg}")
+                return Response(
+                    {'detail': delivery_msg},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            logger.info(f"[RESEND-OTP SUCCESS] Sent to {pending_data.get('email' if method == 'email' else 'phone')} via {method}")
+            return Response({
+                'detail': f'New OTP code sent via {method.upper()}.',
+                'registration_token': reg_token,
+                'method': method,
+                'email': pending_data['email'],
+                'phone': pending_data['phone'],
+                'expires_in': 300
+            }, status=status.HTTP_200_OK)
+
+        # Handle Initial Registration submission
+        serializer = SendOTPSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        otp_code = generate_otp()
+        new_token = uuid.uuid4().hex
+
+        payload = {
+            'first_name': data['first_name'],
+            'email': data['email'],
+            'phone': data['phone'],
+            'location': data['location'],
+            'role': data['role'],
+            'parlour_name': (request.data.get('parlour_name') or '').strip(),
+            'password': data['password'],
+            'otp': otp_code,
+            'otp_created_at': timezone.now().isoformat(),
+            'otp_attempts': 0,
+            'method': data['method'],
+        }
+
+        cache.set(f"pending_reg_{new_token}", payload, timeout=300)
+        logger.info(f"[NEW REGISTRATION OTP SAVED] Token: {new_token} | Target: {data['email']} / {data['phone']} | Method: {data['method']}")
+
+        # Trigger Email/SMS delivery
+        if data['method'] == 'phone':
+            success, delivery_msg = send_sms_otp(data['phone'], otp_code)
+        else:
+            success, delivery_msg = send_email_otp(data['email'], data['first_name'], otp_code)
+
+        if not success:
+            logger.error(f"[SEND-OTP DELIVERY FAILED] Target: {data['email'] if data['method'] == 'email' else data['phone']} | Method: {data['method']} | Error: {delivery_msg}")
+            return Response(
+                {'detail': delivery_msg},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        logger.info(f"[SEND-OTP SUCCESS] Sent to {data['email'] if data['method'] == 'email' else data['phone']} via {data['method']}")
+        return Response({
+            'detail': f'Registration details accepted. Verification code sent via {data["method"].upper()}.',
+            'registration_token': new_token,
+            'method': data['method'],
+            'email': data['email'],
+            'phone': data['phone'],
+            'expires_in': 300
+        }, status=status.HTTP_200_OK)
+
+
+class VerifyOTPView(generics.GenericAPIView):
+    permission_classes = [permissions.AllowAny]
+    serializer_class = VerifyOTPSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        pending_data = serializer.validated_data['pending_data']
+        reg_token = serializer.validated_data['registration_token']
+
+        with transaction.atomic():
+            user = User.objects.create(
+                email=pending_data['email'],
+                phone=pending_data['phone'],
+                first_name=pending_data['first_name'],
+                location=pending_data['location'],
+                role=pending_data['role'],
+                is_verified=True,
+                is_active=True
+            )
+            user.set_password(pending_data['password'])
+            user.save()
+
+            if user.role == 'ADMIN':
+                parlour_name = pending_data.get('parlour_name') or f"{user.first_name}'s Salon"
+                Parlour.objects.create(
+                    owner=user,
+                    name=parlour_name,
+                    location=user.location
+                )
+
+            # Clear temporary pending registration data
+            cache.delete(f"pending_reg_{reg_token}")
+
+        return Response({
+            'detail': 'Account created and verified successfully! You can now log in.',
+            'user': UserSerializer(user).data
+        }, status=status.HTTP_201_CREATED)
+
+
+class RegisterView(SendOTPView):
+    pass
+
 
 class LoginView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]
@@ -29,8 +186,17 @@ class LoginView(generics.GenericAPIView):
         if not identifier or not password:
             return Response({'detail': 'Email or phone number and password are required.'}, status=status.HTTP_400_BAD_REQUEST)
         user = User.objects.filter(email__iexact=identifier).first() or User.objects.filter(phone=identifier).first()
-        if not user or not user.is_active or not authenticate(request, email=user.email, password=password):
+        if not user or not user.check_password(password):
             return Response({'detail': 'Invalid login credentials.'}, status=status.HTTP_401_UNAUTHORIZED)
+        if not user.is_verified:
+            return Response({
+                'detail': 'Account is not verified. Please complete OTP verification.',
+                'requires_verification': True,
+                'email': user.email,
+                'phone': user.phone
+            }, status=status.HTTP_403_FORBIDDEN)
+        if not user.is_active:
+            return Response({'detail': 'Account is inactive. Please contact support.'}, status=status.HTTP_403_FORBIDDEN)
         role = (request.data.get('role') or '').upper()
         if role and role != user.role:
             return Response({'detail': 'Selected role does not match this account.'}, status=status.HTTP_403_FORBIDDEN)

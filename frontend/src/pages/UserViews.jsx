@@ -59,7 +59,7 @@ export function UserDashboardView() {
           Welcome back, {user.name || 'Beautiful'}
         </h1>
         <p style={{ color: 'var(--text-muted)' }}>
-          Manage your luxury salon visits, explore treatments, and pamper yourself.
+          Premium care, beautiful results, unforgettable experiences.
         </p>
       </div>
 

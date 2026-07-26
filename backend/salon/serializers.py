@@ -30,20 +30,25 @@ class ChangePasswordSerializer(serializers.Serializer):
             raise serializers.ValidationError({'current_password': 'Current password is incorrect.'})
         return data
 
-class RegisterSerializer(serializers.ModelSerializer):
+import re
+import uuid
+from datetime import datetime, timedelta
+from django.core.validators import validate_email
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.utils import timezone
+from django.core.cache import cache
+
+class SendOTPSerializer(serializers.Serializer):
+    first_name = serializers.CharField(max_length=150)
+    email = serializers.CharField()
+    phone = serializers.CharField()
+    location = serializers.CharField(max_length=180)
     password = serializers.CharField(write_only=True)
     confirm = serializers.CharField(write_only=True, required=False, allow_blank=True)
     confirm_password = serializers.CharField(write_only=True, required=False, allow_blank=True)
-    parlour_name = serializers.CharField(write_only=True, required=False, allow_blank=True)
     role = serializers.CharField(required=False, default='USER')
-
-    class Meta:
-        model = User
-        fields = ['first_name', 'email', 'phone', 'location', 'password', 'confirm', 'confirm_password', 'role', 'parlour_name']
-        extra_kwargs = {
-            'email': {'validators': []},
-            'phone': {'validators': []},
-        }
+    parlour_name = serializers.CharField(required=False, allow_blank=True)
+    method = serializers.ChoiceField(choices=['email', 'phone'], default='email')
 
     def validate(self, data):
         errors = {}
@@ -53,30 +58,43 @@ class RegisterSerializer(serializers.ModelSerializer):
         location = (data.get('location') or '').strip()
         role = (data.get('role') or 'USER').strip().upper()
         password = data.get('password') or ''
+        method = data.get('method') or 'email'
 
         if not first_name:
             errors['first_name'] = 'Full name is required.'
 
+        # Validate Email Format and Exists
         if not email:
-            errors['email'] = 'Email is required.'
-        elif User.objects.filter(email__iexact=email).exists():
-            errors['email'] = 'Email already exists.'
+            errors['email'] = 'Email address is required.'
+        else:
+            try:
+                validate_email(email)
+            except DjangoValidationError:
+                errors['email'] = 'Please enter a valid email address.'
+            else:
+                if User.objects.filter(email__iexact=email).exists():
+                    errors['email'] = 'An account with this email address already exists.'
 
+        # Validate Phone Format and Exists
+        clean_phone = re.sub(r'[\s\-\(\)]', '', phone)
         if not phone:
             errors['phone'] = 'Phone number is required.'
-        elif User.objects.filter(phone=phone).exists():
-            errors['phone'] = 'Phone number already exists.'
+        elif not re.match(r'^\+?[0-9]{7,15}$', clean_phone):
+            errors['phone'] = 'Please enter a valid phone number (7 to 15 digits).'
+        else:
+            if User.objects.filter(phone=clean_phone).exists():
+                errors['phone'] = 'An account with this phone number already exists.'
 
         if not location:
             errors['location'] = 'Location is required.'
 
-        if not role:
-            errors['role'] = 'Role is required.'
+        if not role or role not in ['USER', 'ADMIN']:
+            errors['role'] = 'Invalid role selected.'
 
         if not password:
             errors['password'] = 'Password is required.'
         elif len(password) < 8:
-            errors['password'] = 'Password is too short.'
+            errors['password'] = 'Password must be at least 8 characters long.'
 
         confirm_val = data.get('confirm') or data.get('confirm_password')
         if confirm_val and password != confirm_val:
@@ -86,30 +104,72 @@ class RegisterSerializer(serializers.ModelSerializer):
         if role == 'ADMIN':
             parlour = (data.get('parlour_name') or '').strip()
             if not parlour:
-                errors['parlour_name'] = 'Parlour name is required.'
+                errors['parlour_name'] = 'Parlour name is required for Salon Owner.'
 
         if errors:
             raise serializers.ValidationError(errors)
 
         data['first_name'] = first_name
         data['email'] = email
-        data['phone'] = phone
+        data['phone'] = clean_phone
         data['location'] = location
         data['role'] = role
+        data['method'] = method
         return data
 
-    def create(self, data):
-        salon = data.pop('parlour_name', None)
-        data.pop('confirm', None)
-        data.pop('confirm_password', None)
-        password = data.pop('password')
-        with transaction.atomic():
-            user = User(**data)
-            user.set_password(password)
-            user.save()
-            if user.role == 'ADMIN':
-                Parlour.objects.create(owner=user, name=salon or f"{user.first_name}'s Salon", location=user.location)
-        return user
+
+class ResendOTPSerializer(serializers.Serializer):
+    registration_token = serializers.CharField()
+    method = serializers.ChoiceField(choices=['email', 'phone'], required=False)
+
+
+class VerifyOTPSerializer(serializers.Serializer):
+    registration_token = serializers.CharField()
+    otp = serializers.CharField(max_length=6, min_length=6)
+
+    def validate(self, data):
+        token = data.get('registration_token', '').strip()
+        otp_code = data.get('otp', '').strip()
+
+        if not token:
+            raise serializers.ValidationError({'detail': 'Registration verification token is required.'})
+
+        pending_data = cache.get(f"pending_reg_{token}")
+
+        if not pending_data:
+            raise serializers.ValidationError({'detail': 'OTP verification session expired or invalid. Please register again.'})
+
+        # Expiry check (5 minutes)
+        otp_created_at = datetime.fromisoformat(pending_data['otp_created_at'])
+        if timezone.now() - otp_created_at > timedelta(minutes=5):
+            cache.delete(f"pending_reg_{token}")
+            raise serializers.ValidationError({'detail': 'OTP has expired (valid for 5 minutes). Please register again.'})
+
+        # Max attempts check (5 attempts)
+        if pending_data.get('otp_attempts', 0) >= 5:
+            cache.delete(f"pending_reg_{token}")
+            raise serializers.ValidationError({'detail': 'Maximum verification attempts exceeded. Please register again.'})
+
+        # Verify code
+        if pending_data['otp'] != otp_code:
+            pending_data['otp_attempts'] = pending_data.get('otp_attempts', 0) + 1
+            remaining_seconds = int((otp_created_at + timedelta(minutes=5) - timezone.now()).total_seconds())
+            if remaining_seconds > 0:
+                cache.set(f"pending_reg_{token}", pending_data, timeout=remaining_seconds)
+
+            remaining = 5 - pending_data['otp_attempts']
+            if remaining > 0:
+                raise serializers.ValidationError({'detail': f'Invalid OTP code. {remaining} attempt(s) remaining.'})
+            else:
+                cache.delete(f"pending_reg_{token}")
+                raise serializers.ValidationError({'detail': 'Invalid OTP. Maximum attempts reached. Please register again.'})
+
+        data['pending_data'] = pending_data
+        return data
+
+
+class RegisterSerializer(SendOTPSerializer):
+    pass
 
 class ParlourSerializer(serializers.ModelSerializer):
     average_rating = serializers.SerializerMethodField()

@@ -1315,6 +1315,163 @@ html[data-theme='dark'] .auth-role-btn.active {
   color: var(--text-main);
 }
 
+/* OTP Verification Styles */
+.otp-steps-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.otp-step-pill {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 20px;
+  background: var(--surface-subtle);
+  color: var(--text-muted);
+  border: 1px solid var(--surface-border);
+  transition: all 0.2s ease;
+}
+
+.otp-step-pill.active {
+  background: rgba(212, 175, 55, 0.15);
+  color: #B58A28;
+  border-color: rgba(212, 175, 55, 0.4);
+}
+
+.otp-method-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.otp-method-card {
+  border: 2px solid var(--surface-border);
+  background: var(--card-bg);
+  border-radius: 16px;
+  padding: 16px 12px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.otp-method-card:hover {
+  border-color: var(--rose-pink);
+  transform: translateY(-2px);
+}
+
+.otp-method-card.active {
+  border-color: var(--rose-pink);
+  background: rgba(247, 206, 215, 0.15);
+  box-shadow: 0 8px 20px rgba(233, 163, 178, 0.2);
+}
+
+.otp-method-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: var(--surface-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--rose-pink);
+}
+
+.otp-method-card.active .otp-method-icon {
+  background: var(--rose-pink);
+  color: #FFFFFF;
+}
+
+.otp-method-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.otp-method-detail {
+  font-size: 11px;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.otp-digit-container {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 20px 0;
+}
+
+.otp-digit-input {
+  width: 48px;
+  height: 56px;
+  border-radius: 14px;
+  border: 2px solid var(--surface-border);
+  background: var(--card-bg);
+  font-size: 24px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--deep-plum);
+  outline: none;
+  transition: all 0.2s ease;
+  font-family: monospace;
+}
+
+html[data-theme='dark'] .otp-digit-input {
+  color: var(--blush-pink);
+}
+
+.otp-digit-input:focus {
+  border-color: var(--rose-pink);
+  box-shadow: 0 0 0 4px rgba(233, 163, 178, 0.25);
+  transform: translateY(-2px);
+}
+
+.otp-timer-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface-subtle);
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-bottom: 20px;
+  font-size: 13px;
+}
+
+.otp-timer-text {
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.otp-resend-btn {
+  background: none;
+  border: none;
+  color: var(--rose-pink);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  padding: 0;
+}
+
+.otp-resend-btn:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.otp-resend-btn:not(:disabled):hover {
+  text-decoration: underline;
+}
+
 /* ==========================================
    MODERN TABLES & LISTS
    ========================================== */
