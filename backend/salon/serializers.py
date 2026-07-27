@@ -1,7 +1,10 @@
+import logging
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
 from .models import *
+
+logger = logging.getLogger(__name__)
 
 class UserSerializer(serializers.ModelSerializer):
     name = serializers.CharField(source='first_name', read_only=True)
