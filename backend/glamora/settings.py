@@ -96,12 +96,15 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'salon.User'
 
 # CORS Configuration
+CORS_ALLOW_ALL_ORIGINS = os.getenv('CORS_ALLOW_ALL_ORIGINS', 'True').lower() == 'true'
+
 default_cors = (
     'http://localhost:5173,'
     'http://127.0.0.1:5173,'
     'http://localhost:5174,'
     'http://127.0.0.1:5174,'
-    'https://glamora-bice.vercel.app'
+    'https://glamora-bice.vercel.app,'
+    'https://glamora-hm0tt6bjl-madhusrinivas17s-projects.vercel.app'
 )
 
 raw_cors = os.getenv('CORS_ALLOWED_ORIGINS', default_cors)
@@ -112,11 +115,20 @@ CORS_ALLOWED_ORIGINS = [
     if origin.strip()
 ]
 
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https:\/\/.*\.vercel\.app$",
+    r"^http:\/\/localhost:[0-9]+$",
+    r"^http:\/\/127\.0\.0\.1:[0-9]+$",
+]
+
 CORS_ALLOW_CREDENTIALS = True
 
 # CSRF Configuration
 CSRF_TRUSTED_ORIGINS = [
+    'https://*.vercel.app',
     'https://glamora-bice.vercel.app',
+    'https://glamora-hm0tt6bjl-madhusrinivas17s-projects.vercel.app',
+    'https://glamora-1io9.onrender.com',
 ]
 
 REST_FRAMEWORK = {
