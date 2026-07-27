@@ -140,39 +140,45 @@ class VerifyOTPView(generics.GenericAPIView):
     serializer_class = VerifyOTPSerializer
 
     def post(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        pending_data = serializer.validated_data['pending_data']
-        reg_token = serializer.validated_data['registration_token']
+        try:
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            pending_data = serializer.validated_data['pending_data']
+            reg_token = serializer.validated_data['registration_token']
 
-        with transaction.atomic():
-            user = User.objects.create(
-                email=pending_data['email'],
-                phone=pending_data['phone'],
-                first_name=pending_data['first_name'],
-                location=pending_data['location'],
-                role=pending_data['role'],
-                is_verified=True,
-                is_active=True
-            )
-            user.set_password(pending_data['password'])
-            user.save()
-
-            if user.role == 'ADMIN':
-                parlour_name = pending_data.get('parlour_name') or f"{user.first_name}'s Salon"
-                Parlour.objects.create(
-                    owner=user,
-                    name=parlour_name,
-                    location=user.location
+            with transaction.atomic():
+                user = User.objects.create(
+                    email=pending_data['email'],
+                    phone=pending_data['phone'],
+                    first_name=pending_data['first_name'],
+                    location=pending_data['location'],
+                    role=pending_data['role'],
+                    is_verified=True,
+                    is_active=True
                 )
+                user.set_password(pending_data['password'])
+                user.save()
 
-            # Clear temporary pending registration data
-            cache.delete(f"pending_reg_{reg_token}")
+                if user.role == 'ADMIN':
+                    parlour_name = pending_data.get('parlour_name') or f"{user.first_name}'s Salon"
+                    Parlour.objects.create(
+                        owner=user,
+                        name=parlour_name,
+                        location=user.location
+                    )
 
-        return Response({
-            'detail': 'Account created and verified successfully! You can now log in.',
-            'user': UserSerializer(user).data
-        }, status=status.HTTP_201_CREATED)
+                # Clear temporary pending registration data
+                cache.delete(f"pending_reg_{reg_token}")
+
+            return Response({
+                'detail': 'Account created and verified successfully! You can now log in.',
+                'user': UserSerializer(user).data
+            }, status=status.HTTP_201_CREATED)
+        except serializers.ValidationError as val_err:
+            raise val_err
+        except Exception as e:
+            logger.exception(f"[VERIFY-OTP SERVER ERROR] {e}")
+            return Response({'detail': f'Verification failed: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class RegisterView(SendOTPView):
@@ -183,27 +189,31 @@ class LoginView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, *args, **kwargs):
-        identifier = (request.data.get('email') or request.data.get('phone') or request.data.get('identifier') or '').strip()
-        password = request.data.get('password')
-        if not identifier or not password:
-            return Response({'detail': 'Email or phone number and password are required.'}, status=status.HTTP_400_BAD_REQUEST)
-        user = User.objects.filter(email__iexact=identifier).first() or User.objects.filter(phone=identifier).first()
-        if not user or not user.check_password(password):
-            return Response({'detail': 'Invalid login credentials.'}, status=status.HTTP_401_UNAUTHORIZED)
-        if not user.is_verified:
-            return Response({
-                'detail': 'Account is not verified. Please complete OTP verification.',
-                'requires_verification': True,
-                'email': user.email,
-                'phone': user.phone
-            }, status=status.HTTP_403_FORBIDDEN)
-        if not user.is_active:
-            return Response({'detail': 'Account is inactive. Please contact support.'}, status=status.HTTP_403_FORBIDDEN)
-        role = (request.data.get('role') or '').upper()
-        if role and role != user.role:
-            return Response({'detail': 'Selected role does not match this account.'}, status=status.HTTP_403_FORBIDDEN)
-        refresh = RefreshToken.for_user(user)
-        return Response({'refresh': str(refresh), 'access': str(refresh.access_token), 'user': UserSerializer(user).data})
+        try:
+            identifier = (request.data.get('email') or request.data.get('phone') or request.data.get('identifier') or '').strip()
+            password = request.data.get('password')
+            if not identifier or not password:
+                return Response({'detail': 'Email or phone number and password are required.'}, status=status.HTTP_400_BAD_REQUEST)
+            user = User.objects.filter(email__iexact=identifier).first() or User.objects.filter(phone=identifier).first()
+            if not user or not user.check_password(password):
+                return Response({'detail': 'Invalid login credentials.'}, status=status.HTTP_401_UNAUTHORIZED)
+            if not user.is_verified:
+                return Response({
+                    'detail': 'Account is not verified. Please complete OTP verification.',
+                    'requires_verification': True,
+                    'email': user.email,
+                    'phone': user.phone
+                }, status=status.HTTP_403_FORBIDDEN)
+            if not user.is_active:
+                return Response({'detail': 'Account is inactive. Please contact support.'}, status=status.HTTP_403_FORBIDDEN)
+            role = (request.data.get('role') or '').upper()
+            if role and role != user.role:
+                return Response({'detail': 'Selected role does not match this account.'}, status=status.HTTP_403_FORBIDDEN)
+            refresh = RefreshToken.for_user(user)
+            return Response({'refresh': str(refresh), 'access': str(refresh.access_token), 'user': UserSerializer(user).data})
+        except Exception as e:
+            logger.exception(f"[LOGIN SERVER ERROR] {e}")
+            return Response({'detail': f'Login failed: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
 class ParlourViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Parlour.objects.all().order_by('name')
