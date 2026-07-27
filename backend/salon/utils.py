@@ -19,7 +19,6 @@ def generate_otp():
 def send_email_otp(user_email, user_name, otp):
     """
     Sends a luxury-styled OTP verification email to the user using Django's email backend.
-    Includes automatic failover to SSL Port 465 if Port 587 TLS encounters network unreachability on Render.
     Returns (success_boolean, message_string).
     """
     subject = "Verify Your Glamora Account"
@@ -75,7 +74,7 @@ def send_email_otp(user_email, user_name, otp):
     plain_message = f"Hello {user_name or 'Valued Client'},\n\nYour Glamora verification code is: {otp}\nThis code is valid for 5 minutes.\n\nThank you,\nGlamora Team"
 
     host_user = (getattr(settings, 'EMAIL_HOST_USER', '') or '').strip()
-    host_password = (getattr(settings, 'EMAIL_HOST_PASSWORD', '') or '').strip()
+    host_password = (getattr(settings, 'EMAIL_HOST_PASSWORD', '') or '').strip().replace(' ', '')
     from_email = (getattr(settings, 'DEFAULT_FROM_EMAIL', '') or host_user).strip()
 
     logger.info(f"[EMAIL OTP INITIATED] Target recipient: {user_email}")
@@ -97,7 +96,10 @@ def send_email_otp(user_email, user_name, otp):
         logger.info(f"[EMAIL OTP ACCEPTED] Email sent via standard backend to: {user_email}")
         return True, "OTP sent successfully to your email address."
     except Exception as err_primary:
-        logger.warning(f"[EMAIL OTP PRIMARY FAILED] {err_primary}. Attempting SSL Port 465 failover...")
+        err_str = str(err_primary)
+        logger.warning(f"[EMAIL OTP PRIMARY FAILED] {err_str}. Attempting SSL Port 465 failover...")
+        if '535' in err_str or 'BadCredentials' in err_str:
+            return False, f"Gmail SMTP Authentication Failed (535 Bad Credentials). Please check EMAIL_HOST_USER ({host_user}) and 16-character Gmail App Password on Render."
 
     # Attempt 2: Direct SSL Port 465 Failover for Cloud Networks (Render)
     try:
@@ -117,8 +119,8 @@ def send_email_otp(user_email, user_name, otp):
         logger.info(f"[EMAIL OTP SSL SUCCESS] Sent via SSL 465 failover to: {user_email}")
         return True, "OTP sent successfully to your email address."
     except Exception as err_ssl:
-        logger.error(f"[EMAIL OTP SSL FAILED] {err_ssl}")
-
-    # Fallback for Cloud Sandboxes: Log OTP to server logs and allow OTP verification to proceed
-    logger.info(f"[GLAMORA OTP BACKEND FALLBACK] Verification code for {user_email} is: {otp}")
-    return True, "Verification code sent! (Check your email inbox or server logs)."
+        err_str = str(err_ssl)
+        logger.error(f"[EMAIL OTP SSL FAILED] {err_str}")
+        if '535' in err_str or 'BadCredentials' in err_str:
+            return False, f"Gmail SMTP Authentication Failed (535 Bad Credentials). Please check EMAIL_HOST_USER ({host_user}) and 16-character Gmail App Password on Render."
+        return False, f"Unable to deliver OTP email: {err_str}"
