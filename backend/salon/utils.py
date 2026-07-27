@@ -164,6 +164,6 @@ def send_email_otp(user_email, user_name, otp):
         )
         logger.info(f"[EMAIL OTP ACCEPTED] Email provider accepted message for delivery to recipient: {user_email}")
         return True, "OTP sent successfully to your email address."
-    except Exception as e:
-        logger.error(f"[EMAIL OTP SENDING FAILED] Target: {user_email} | Reason: {str(e)}")
-        return False, "Unable to send OTP email. Please try again."
+    except Exception:
+        logger.exception("[EMAIL OTP SENDING FAILED]")
+        raise
