@@ -72,8 +72,11 @@ class SendOTPSerializer(serializers.Serializer):
             except DjangoValidationError:
                 errors['email'] = 'Please enter a valid email address.'
             else:
-                if User.objects.filter(email__iexact=email).exists():
-                    errors['email'] = 'An account with this email address already exists.'
+                try:
+                    if User.objects.filter(email__iexact=email).exists():
+                        errors['email'] = 'An account with this email address already exists.'
+                except Exception as db_err:
+                    logger.warning(f"[DB WARN in SendOTPSerializer email check] {db_err}")
 
         # Validate Phone Format and Exists
         clean_phone = re.sub(r'[\s\-\(\)]', '', phone)
@@ -82,8 +85,11 @@ class SendOTPSerializer(serializers.Serializer):
         elif not re.match(r'^\+?[0-9]{7,15}$', clean_phone):
             errors['phone'] = 'Please enter a valid phone number (7 to 15 digits).'
         else:
-            if User.objects.filter(phone=clean_phone).exists():
-                errors['phone'] = 'An account with this phone number already exists.'
+            try:
+                if User.objects.filter(phone=clean_phone).exists():
+                    errors['phone'] = 'An account with this phone number already exists.'
+            except Exception as db_err:
+                logger.warning(f"[DB WARN in SendOTPSerializer phone check] {db_err}")
 
         if not location:
             errors['location'] = 'Location is required.'

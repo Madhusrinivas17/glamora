@@ -57,23 +57,39 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'glamora.wsgi.application'
 
+import urllib.parse
+
+db_url = os.getenv('DATABASE_URL')
+if db_url:
+    parsed = urllib.parse.urlparse(db_url)
+    db_engine = 'django.db.backends.mysql'
+    db_name = parsed.path.lstrip('/') or 'defaultdb'
+    db_user = urllib.parse.unquote(parsed.username) if parsed.username else 'avnadmin'
+    db_password = urllib.parse.unquote(parsed.password) if parsed.password else ''
+    db_host = parsed.hostname or '127.0.0.1'
+    db_port = str(parsed.port) if parsed.port else '3306'
+else:
+    db_engine = os.getenv('DATABASE_ENGINE', 'django.db.backends.mysql').strip()
+    db_name = os.getenv('DATABASE_NAME', 'defaultdb').strip()
+    db_user = os.getenv('DATABASE_USER', 'avnadmin').strip()
+    db_password = (os.getenv('DATABASE_PASSWORD') or '').strip()
+    db_host = os.getenv('DATABASE_HOST', 'glamora-mysql-sves-madhu.f.aivencloud.com').strip()
+    db_port = os.getenv('DATABASE_PORT', '22774').strip()
+
+db_options = {'charset': 'utf8mb4'}
+if 'aivencloud.com' in db_host or os.getenv('MYSQL_SSL', 'True').lower() == 'true':
+    db_options['ssl'] = {'ssl_mode': 'REQUIRED'}
+
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': os.getenv('DATABASE_NAME', 'defaultdb'),
-        'USER': os.getenv('DATABASE_USER', 'avnadmin'),
-        'PASSWORD': os.getenv('DATABASE_PASSWORD'),
-        'HOST': os.getenv(
-            'DATABASE_HOST',
-            'glamora-mysql-sves-madhu.f.aivencloud.com'
-        ),
-        'PORT': os.getenv('DATABASE_PORT', '22774'),
-        'OPTIONS': {
-            'charset': 'utf8mb4',
-            'ssl': {
-                'ssl_mode': 'REQUIRED',
-            },
-        },
+        'ENGINE': db_engine,
+        'NAME': db_name,
+        'USER': db_user,
+        'PASSWORD': db_password,
+        'HOST': db_host,
+        'PORT': db_port,
+        'OPTIONS': db_options,
+        'CONN_MAX_AGE': 60,
     }
 }
 
