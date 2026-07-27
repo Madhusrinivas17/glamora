@@ -28,103 +28,111 @@ class SendOTPView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, *args, **kwargs):
-        reg_token = (request.data.get('registration_token') or '').strip()
-        logger.info(f"[POST /api/auth/send-otp/] Received request data: {request.data}")
+        try:
+            reg_token = (request.data.get('registration_token') or '').strip()
+            logger.info(f"[POST /api/auth/send-otp/] Received request data: {request.data}")
 
-        # Handle Resend OTP for existing pending registration session
-        if reg_token:
-            pending_data = cache.get(f"pending_reg_{reg_token}")
-            if not pending_data:
-                logger.warning(f"[RESEND-OTP FAILED] Invalid or expired token: {reg_token}")
-                return Response(
-                    {'detail': 'OTP session has expired. Please submit registration again.'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+            # Handle Resend OTP for existing pending registration session
+            if reg_token:
+                pending_data = cache.get(f"pending_reg_{reg_token}")
+                if not pending_data:
+                    logger.warning(f"[RESEND-OTP FAILED] Invalid or expired token: {reg_token}")
+                    return Response(
+                        {'detail': 'OTP session has expired. Please submit registration again.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
 
-            otp_created_at = datetime.fromisoformat(pending_data['otp_created_at'])
-            time_elapsed = (timezone.now() - otp_created_at).total_seconds()
-            if time_elapsed < 30:
-                cooldown_remaining = int(30 - time_elapsed)
-                logger.warning(f"[RESEND-OTP COOLDOWN] Wait {cooldown_remaining}s for token {reg_token}")
-                return Response(
-                    {'detail': f'Please wait {cooldown_remaining} seconds before requesting a new OTP.'},
-                    status=status.HTTP_429_TOO_MANY_REQUESTS
-                )
+                otp_created_at = datetime.fromisoformat(pending_data['otp_created_at'])
+                time_elapsed = (timezone.now() - otp_created_at).total_seconds()
+                if time_elapsed < 30:
+                    cooldown_remaining = int(30 - time_elapsed)
+                    logger.warning(f"[RESEND-OTP COOLDOWN] Wait {cooldown_remaining}s for token {reg_token}")
+                    return Response(
+                        {'detail': f'Please wait {cooldown_remaining} seconds before requesting a new OTP.'},
+                        status=status.HTTP_429_TOO_MANY_REQUESTS
+                    )
+
+                otp_code = generate_otp()
+                method = 'email'
+
+                pending_data['otp'] = otp_code
+                pending_data['otp_created_at'] = timezone.now().isoformat()
+                pending_data['otp_attempts'] = 0
+                pending_data['method'] = method
+
+                cache.set(f"pending_reg_{reg_token}", pending_data, timeout=300)
+
+                # Trigger Email delivery
+                success, delivery_msg = send_email_otp(pending_data['email'], pending_data['first_name'], otp_code)
+
+                if not success:
+                    logger.error(f"[RESEND-OTP DELIVERY FAILED] Target: {pending_data.get('email')} | Error: {delivery_msg}")
+                    return Response(
+                        {'detail': delivery_msg},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                logger.info(f"[RESEND-OTP SUCCESS] Sent to {pending_data.get('email')} via EMAIL")
+                return Response({
+                    'detail': 'New OTP code sent to your email address.',
+                    'registration_token': reg_token,
+                    'method': 'email',
+                    'email': pending_data['email'],
+                    'phone': pending_data['phone'],
+                    'expires_in': 300
+                }, status=status.HTTP_200_OK)
+
+            # Handle Initial Registration submission
+            serializer = SendOTPSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            data = serializer.validated_data
 
             otp_code = generate_otp()
-            method = 'email'
+            new_token = uuid.uuid4().hex
 
-            pending_data['otp'] = otp_code
-            pending_data['otp_created_at'] = timezone.now().isoformat()
-            pending_data['otp_attempts'] = 0
-            pending_data['method'] = method
+            payload = {
+                'first_name': data['first_name'],
+                'email': data['email'],
+                'phone': data['phone'],
+                'location': data['location'],
+                'role': data['role'],
+                'parlour_name': (request.data.get('parlour_name') or '').strip(),
+                'password': data['password'],
+                'otp': otp_code,
+                'otp_created_at': timezone.now().isoformat(),
+                'otp_attempts': 0,
+                'method': 'email',
+            }
 
-            cache.set(f"pending_reg_{reg_token}", pending_data, timeout=300)
+            cache.set(f"pending_reg_{new_token}", payload, timeout=300)
+            logger.info(f"[NEW REGISTRATION OTP SAVED] Token: {new_token} | Target: {data['email']}")
 
             # Trigger Email delivery
-            success, delivery_msg = send_email_otp(pending_data['email'], pending_data['first_name'], otp_code)
+            success, delivery_msg = send_email_otp(data['email'], data['first_name'], otp_code)
 
             if not success:
-                logger.error(f"[RESEND-OTP DELIVERY FAILED] Target: {pending_data.get('email')} | Error: {delivery_msg}")
+                logger.error(f"[SEND-OTP DELIVERY FAILED] Target: {data['email']} | Error: {delivery_msg}")
                 return Response(
                     {'detail': delivery_msg},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            logger.info(f"[RESEND-OTP SUCCESS] Sent to {pending_data.get('email')} via EMAIL")
+            logger.info(f"[SEND-OTP SUCCESS] Sent to {data['email']} via EMAIL")
             return Response({
-                'detail': 'New OTP code sent to your email address.',
-                'registration_token': reg_token,
+                'detail': 'Registration details accepted. Verification code sent to your email address.',
+                'registration_token': new_token,
                 'method': 'email',
-                'email': pending_data['email'],
-                'phone': pending_data['phone'],
+                'email': data['email'],
+                'phone': data['phone'],
                 'expires_in': 300
             }, status=status.HTTP_200_OK)
 
-        # Handle Initial Registration submission
-        serializer = SendOTPSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
-
-        otp_code = generate_otp()
-        new_token = uuid.uuid4().hex
-
-        payload = {
-            'first_name': data['first_name'],
-            'email': data['email'],
-            'phone': data['phone'],
-            'location': data['location'],
-            'role': data['role'],
-            'parlour_name': (request.data.get('parlour_name') or '').strip(),
-            'password': data['password'],
-            'otp': otp_code,
-            'otp_created_at': timezone.now().isoformat(),
-            'otp_attempts': 0,
-            'method': 'email',
-        }
-
-        cache.set(f"pending_reg_{new_token}", payload, timeout=300)
-        logger.info(f"[NEW REGISTRATION OTP SAVED] Token: {new_token} | Target: {data['email']}")
-
-        # Trigger Email delivery
-        success, delivery_msg = send_email_otp(data['email'], data['first_name'], otp_code)
-
-        if not success:
-            logger.error(f"[SEND-OTP DELIVERY FAILED] Target: {data['email']} | Error: {delivery_msg}")
+        except Exception as e:
+            logger.exception(f"[SEND-OTP SERVER ERROR] Error processing send-otp: {str(e)}")
             return Response(
-                {'detail': delivery_msg},
+                {'detail': f'Unable to process registration request: {str(e)}'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-
-        logger.info(f"[SEND-OTP SUCCESS] Sent to {data['email']} via EMAIL")
-        return Response({
-            'detail': 'Registration details accepted. Verification code sent to your email address.',
-            'registration_token': new_token,
-            'method': 'email',
-            'email': data['email'],
-            'phone': data['phone'],
-            'expires_in': 300
-        }, status=status.HTTP_200_OK)
 
 
 class VerifyOTPView(generics.GenericAPIView):

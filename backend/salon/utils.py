@@ -151,7 +151,7 @@ def send_email_otp(user_email, user_name, otp):
 
     if not host_user or not host_password:
         logger.warning("[EMAIL OTP CONFIG ERROR] EMAIL_HOST_USER or EMAIL_HOST_PASSWORD is genuinely missing.")
-        return False, "Email service is not configured. Configure SMTP credentials (EMAIL_HOST_USER, EMAIL_HOST_PASSWORD) in the backend .env file."
+        return False, "Email service is not configured. Configure SMTP credentials (EMAIL_HOST_USER, EMAIL_HOST_PASSWORD) in the backend .env file or Render environment settings."
 
     try:
         send_mail(
@@ -164,6 +164,6 @@ def send_email_otp(user_email, user_name, otp):
         )
         logger.info(f"[EMAIL OTP ACCEPTED] Email provider accepted message for delivery to recipient: {user_email}")
         return True, "OTP sent successfully to your email address."
-    except Exception:
-        logger.exception("[EMAIL OTP SENDING FAILED]")
-        raise
+    except Exception as e:
+        logger.exception(f"[EMAIL OTP SENDING FAILED] Target: {user_email} | Reason: {str(e)}")
+        return False, f"Email delivery failed: {str(e)}"

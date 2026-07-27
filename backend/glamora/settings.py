@@ -8,11 +8,11 @@ load_dotenv(BASE_DIR / '.env', override=True)
 
 SECRET_KEY = os.getenv('SECRET_KEY', 'unsafe-development-key')
 DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
-ALLOWED_HOSTS = [
-    "localhost",
-    "127.0.0.1",
-    "glamora-1io9.onrender.com",
-]
+
+raw_hosts = os.getenv('ALLOWED_HOSTS', '*')
+ALLOWED_HOSTS = [host.strip() for host in raw_hosts.split(',') if host.strip()]
+if '*' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.extend(['localhost', '127.0.0.1', '.onrender.com'])
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -77,6 +77,13 @@ DATABASES = {
     }
 }
 
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'glamora-otp-cache',
+    }
+}
+
 AUTH_PASSWORD_VALIDATORS = []
 
 LANGUAGE_CODE = 'en-us'
@@ -89,7 +96,6 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'salon.User'
 
 # CORS Configuration
-
 default_cors = (
     'http://localhost:5173,'
     'http://127.0.0.1:5173,'
@@ -108,9 +114,7 @@ CORS_ALLOWED_ORIGINS = [
 
 CORS_ALLOW_CREDENTIALS = True
 
-
 # CSRF Configuration
-
 CSRF_TRUSTED_ORIGINS = [
     'https://glamora-bice.vercel.app',
 ]
@@ -149,12 +153,21 @@ SIMPLE_JWT = {
 }
 
 # Email Configuration
-EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
-EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
-EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
-EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').lower() == 'true'
-EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', 'False').lower() == 'true'
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
-DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER or 'Glamora <noreply@glamora.com>')
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend').strip()
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com').strip()
 
+try:
+    EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587').strip())
+except (ValueError, TypeError):
+    EMAIL_PORT = 587
+
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').strip().lower() == 'true'
+EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', 'False').strip().lower() == 'true'
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '').strip()
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '').strip()
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER or 'Glamora <noreply@glamora.com>').strip()
+
+try:
+    EMAIL_TIMEOUT = int(os.getenv('EMAIL_TIMEOUT', '10').strip())
+except (ValueError, TypeError):
+    EMAIL_TIMEOUT = 10
