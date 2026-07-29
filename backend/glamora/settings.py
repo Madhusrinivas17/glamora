@@ -57,41 +57,46 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'glamora.wsgi.application'
 
-import urllib.parse
+import dj_database_url
 
 db_url = os.getenv('DATABASE_URL')
-if db_url:
-    parsed = urllib.parse.urlparse(db_url)
-    db_engine = 'django.db.backends.mysql'
-    db_name = parsed.path.lstrip('/') or 'defaultdb'
-    db_user = urllib.parse.unquote(parsed.username) if parsed.username else 'avnadmin'
-    db_password = urllib.parse.unquote(parsed.password) if parsed.password else ''
-    db_host = parsed.hostname or '127.0.0.1'
-    db_port = str(parsed.port) if parsed.port else '3306'
+parsed_db = None
+if db_url and not ('[' in db_url or ']' in db_url or 'YOUR_SUPABASE_PASSWORD' in db_url):
+    try:
+        parsed_db = dj_database_url.config(
+            default=db_url,
+            conn_max_age=60,
+            ssl_require=True
+        )
+    except Exception:
+        parsed_db = None
+
+if parsed_db:
+    DATABASES = {'default': parsed_db}
 else:
-    db_engine = os.getenv('DATABASE_ENGINE', 'django.db.backends.mysql').strip()
-    db_name = os.getenv('DATABASE_NAME', 'defaultdb').strip()
-    db_user = os.getenv('DATABASE_USER', 'avnadmin').strip()
+    db_engine = os.getenv('DATABASE_ENGINE', 'django.db.backends.postgresql').strip()
+    db_name = os.getenv('DATABASE_NAME', 'postgres').strip()
+    db_user = os.getenv('DATABASE_USER', 'postgres').strip()
     db_password = (os.getenv('DATABASE_PASSWORD') or '').strip()
-    db_host = os.getenv('DATABASE_HOST', 'glamora-mysql-sves-madhu.f.aivencloud.com').strip()
-    db_port = os.getenv('DATABASE_PORT', '22774').strip()
+    db_host = os.getenv('DATABASE_HOST', 'localhost').strip()
+    db_port = os.getenv('DATABASE_PORT', '5432').strip()
 
-db_options = {'charset': 'utf8mb4'}
-if 'aivencloud.com' in db_host or os.getenv('MYSQL_SSL', 'True').lower() == 'true':
-    db_options['ssl'] = {'ssl_mode': 'REQUIRED'}
+    db_options = {}
+    if 'supabase' in db_host.lower() or os.getenv('POSTGRES_SSL', 'True').lower() == 'true':
+        db_options['sslmode'] = 'require'
 
-DATABASES = {
-    'default': {
-        'ENGINE': db_engine,
-        'NAME': db_name,
-        'USER': db_user,
-        'PASSWORD': db_password,
-        'HOST': db_host,
-        'PORT': db_port,
-        'OPTIONS': db_options,
-        'CONN_MAX_AGE': 60,
+    DATABASES = {
+        'default': {
+            'ENGINE': db_engine,
+            'NAME': db_name,
+            'USER': db_user,
+            'PASSWORD': db_password,
+            'HOST': db_host,
+            'PORT': db_port,
+            'OPTIONS': db_options,
+            'CONN_MAX_AGE': 60,
+        }
     }
-}
 
 CACHES = {
     'default': {
