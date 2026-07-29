@@ -61,7 +61,14 @@ import dj_database_url
 
 db_url = os.getenv('DATABASE_URL')
 parsed_db = None
-if db_url and not ('[' in db_url or ']' in db_url or 'YOUR_SUPABASE_PASSWORD' in db_url):
+
+def is_placeholder(val):
+    if not val:
+        return False
+    val_str = str(val).lower()
+    return 'your_project_ref' in val_str or '[your' in val_str or 'your_supabase_password' in val_str or 'your-project-ref' in val_str
+
+if db_url and not is_placeholder(db_url):
     try:
         parsed_db = dj_database_url.config(
             default=db_url,
@@ -81,22 +88,31 @@ else:
     db_host = os.getenv('DATABASE_HOST', 'localhost').strip()
     db_port = os.getenv('DATABASE_PORT', '5432').strip()
 
-    db_options = {}
-    if 'supabase' in db_host.lower() or os.getenv('POSTGRES_SSL', 'True').lower() == 'true':
-        db_options['sslmode'] = 'require'
-
-    DATABASES = {
-        'default': {
-            'ENGINE': db_engine,
-            'NAME': db_name,
-            'USER': db_user,
-            'PASSWORD': db_password,
-            'HOST': db_host,
-            'PORT': db_port,
-            'OPTIONS': db_options,
-            'CONN_MAX_AGE': 60,
+    if is_placeholder(db_host) or is_placeholder(db_password):
+        # Fallback to local SQLite until real Supabase credentials are path-configured in .env
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': BASE_DIR / 'db.sqlite3',
+            }
         }
-    }
+    else:
+        db_options = {}
+        if 'supabase' in db_host.lower() or os.getenv('POSTGRES_SSL', 'True').lower() == 'true':
+            db_options['sslmode'] = 'require'
+
+        DATABASES = {
+            'default': {
+                'ENGINE': db_engine,
+                'NAME': db_name,
+                'USER': db_user,
+                'PASSWORD': db_password,
+                'HOST': db_host,
+                'PORT': db_port,
+                'OPTIONS': db_options,
+                'CONN_MAX_AGE': 60,
+            }
+        }
 
 CACHES = {
     'default': {
