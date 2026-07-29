@@ -6,7 +6,9 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env', override=True)
 
-SECRET_KEY = os.getenv('SECRET_KEY', 'unsafe-development-key')
+default_secret = 'django-insecure-glamora-luxury-salon-booking-platform-secret-key-production-32bytes'
+raw_secret = os.getenv('SECRET_KEY', default_secret).strip()
+SECRET_KEY = raw_secret if len(raw_secret) >= 32 and raw_secret != 'change-me' else default_secret
 DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
 
 raw_hosts = os.getenv('ALLOWED_HOSTS', '*')
