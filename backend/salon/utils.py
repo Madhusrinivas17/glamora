@@ -29,13 +29,14 @@ def send_email_via_http_api(to_email, user_name, subject, html_content, plain_me
 
     if resend_api_key:
         try:
+            resend_from = os.getenv('RESEND_FROM_EMAIL', 'Glamora <onboarding@resend.dev>').strip()
             url = "https://api.resend.com/emails"
             headers = {
                 "Authorization": f"Bearer {resend_api_key}",
                 "Content-Type": "application/json"
             }
             payload = json.dumps({
-                "from": from_email if 'resend' in from_email or '@' in from_email else "Glamora <onboarding@resend.dev>",
+                "from": resend_from,
                 "to": [to_email],
                 "subject": subject,
                 "html": html_content
