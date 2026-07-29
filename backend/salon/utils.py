@@ -142,6 +142,10 @@ def send_email_otp(user_email, user_name, otp):
 
     logger.info(f"[EMAIL OTP INITIATED] Target recipient: {user_email}")
 
+    if not host_user or not host_password:
+        logger.warning("[EMAIL OTP CONFIG ERROR] EMAIL_HOST_USER or EMAIL_HOST_PASSWORD is missing.")
+        return False, "Email service is not configured. Please configure EMAIL_HOST_USER and EMAIL_HOST_PASSWORD in environment settings."
+
     # Attempt 2: Standard Django send_mail
     if host_user and host_password:
         try:
